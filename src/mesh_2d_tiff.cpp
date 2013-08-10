@@ -32,9 +32,12 @@
 #include <vtkImageToPolyDataFilter.h>
 #include <vtkPolyData.h>
 #include <vtkDelaunay2D.h>
+#include <vtkCell.h>
+#include <vtkCellData.h>
 
 #include <vector>
 #include <map>
+#include <set>
 #include <string>
 
 #include <cassert>
@@ -53,6 +56,15 @@ int main(int argc, char **argv){
 
   int dims[3];
   vtk_image_data->GetDimensions(dims);
+
+  double bounds[6];
+  vtk_image_data->GetBounds(bounds);
+
+  double spacing[3];
+  vtk_image_data->GetSpacing(spacing);
+
+  bounds[1]+=spacing[0];
+  bounds[3]+=spacing[1];
 
   assert(dims[2]==1);
 
@@ -110,6 +122,69 @@ int main(int argc, char **argv){
   writer->SetFileName(filename.c_str());
   writer->SetInput(pd);
   writer->Write();
+
+  int NNodes = pd->GetNumberOfPoints();
+  std::vector<double> xy(NNodes*2);
+  std::vector<int> cells(NCells*3), region_id(NCells), facets, boundary_id;
+
+  for(int i=0;i<NNodes;i++){
+    pd->GetPoints()->GetPoint(i, &(xy[i*2]));
+  }
+  std::vector< std::set<int> > NEList(NNodes);
+  std::vector<int> EEList(NCells*3, -1);
+  for(int i=0;i<NCells;i++){
+    for(int j=0;j<3;j++){
+      cells[i*3+j] = pd->GetCell(i)->GetPointId(j);
+      NEList[cells[i*3+j]].insert(i);
+    }
+    region_id[i] = pd->GetCellData()->GetArray(0)->GetTuple1(i);
+  }
+  for(int i=0;i<NCells;i++){
+    for(int j=0;j<3;j++){
+      int n1 = cells[i*3+(j+1)%3];
+      int n2 = cells[i*3+(j+2)%3];
+      for(std::set<int>::const_iterator it=NEList[n1].begin();it!=NEList[n1].end();++it){
+        if(*it==i)
+          continue;
+        if(NEList[n2].find(*it)!=NEList[n2].end()){
+          EEList[i*3+j] = *it;
+          break;
+        }
+      }
+    }
+  }
+  for(int i=0;i<NCells;i++){
+    if(EEList[i*3]==-1){
+      facets.push_back(cells[i*3+1]);
+      facets.push_back(cells[i*3+2]);
+    }
+    if(EEList[i*3+1]==-1){
+      facets.push_back(cells[i*3+2]);
+      facets.push_back(cells[i*3]);
+    }
+    if(EEList[i*3+2]==-1){
+      facets.push_back(cells[i*3]);
+      facets.push_back(cells[i*3+1]);
+    }
+  }
+  int NFacets = facets.size()/2;
+  double tol=spacing[0]*0.1;
+  for(int i=0;i<NFacets;i++){
+    if((fabs(xy[facets[i*2]*2]-bounds[0])<tol)&&(fabs(xy[facets[i*2+1]*2]-bounds[0])<tol))
+      boundary_id.push_back(1);
+    else if((fabs(xy[facets[i*2]*2]-bounds[1])<tol)&&(fabs(xy[facets[i*2+1]*2]-bounds[1])<tol))
+      boundary_id.push_back(2);
+    else if((fabs(xy[facets[i*2]*2+1]-bounds[2])<tol)&&(fabs(xy[facets[i*2+1]*2+1]-bounds[2])<tol))
+      boundary_id.push_back(3);
+    else if((fabs(xy[facets[i*2]*2+1]-bounds[3])<tol)&&(fabs(xy[facets[i*2+1]*2+1]-bounds[3])<tol))
+      boundary_id.push_back(4);
+    else{
+      std::cerr<<"something foobar\n"
+               <<bounds[0]<<", "<<bounds[1]<<", "<<bounds[2]<<", "<<bounds[3]<<"\n"
+               <<facets[i*2]<<", "<<facets[i*2+1]<<"\n"
+               <<xy[facets[i*2]*2]<<", "<<xy[facets[i*2]*2+1]<<"\n";
+    }
+  }
 
   return 0;
 }
