@@ -40,7 +40,48 @@
 #include <set>
 #include <string>
 
+#include <iostream>
+#include <fstream>
+
 #include <cassert>
+
+int write_triangle_files_2d(std::string basename, std::vector<double> &xy, std::vector<int> &cells, std::vector<int> &region_id, std::vector<int> &facets, std::vector<int> &boundary_id){
+  // Write node file.
+  std::ofstream node_file;
+  node_file.open(std::string(basename+".node").c_str());
+
+  int NNodes = xy.size()/2;
+  node_file<<NNodes<<" 2 0 0\n";
+  for(int i=0;i<NNodes;i++){
+    node_file<<i<<" "<<xy[i*2]<<" "<<xy[i*2+1]<<std::endl;
+  }
+  node_file.close();
+
+  // Write ele file
+  std::ofstream ele_file;
+  ele_file.open(std::string(basename+".ele").c_str());
+
+  int NCells = cells.size()/3;
+  ele_file<<NCells<<" 3 1\n";
+  for(int i=0;i<3;i++){
+    ele_file<<i<<" "<<cells[i*3]<<" "<<cells[i*3+1]<<" "<<cells[i*3+1]<<" "<<region_id[i]<<std::endl;
+  }
+  ele_file.close();
+
+  // Write edge file
+  std::ofstream edge_file;
+  edge_file.open(std::string(basename+".edge").c_str());
+
+  int NFacets = facets.size()/2;
+  edge_file<<NFacets<<" 1\n";
+  for(int i=0;i<NFacets;i++){
+    edge_file<<i<<" "<<facets[i*2]<<" "<<facets[i*2+1]<<" "<<boundary_id[i]<<std::endl;
+  }
+  edge_file.close();
+
+  return(0);
+
+}
 
 int main(int argc, char **argv){
   if(argc==1){
@@ -185,6 +226,8 @@ int main(int argc, char **argv){
                <<xy[facets[i*2]*2]<<", "<<xy[facets[i*2]*2+1]<<"\n";
     }
   }
+
+  write_triangle_files_2d(basename, xy, cells, region_id, facets, boundary_id);
 
   return 0;
 }
