@@ -33,6 +33,10 @@
 #include <vtkPolyData.h>
 #include <vtkDelaunay2D.h>
 
+#include <vector>
+#include <map>
+#include <string>
+
 #include <cassert>
 
 int main(int argc, char **argv){
@@ -63,10 +67,48 @@ int main(int argc, char **argv){
   triangle->SetInput(image2polydata->GetOutput());
   triangle->Update();
 
-  vtkPolyData *ug = triangle->GetOutput();
+  vtkPolyData *pd = vtkPolyData::New();
+  pd->DeepCopy(triangle->GetOutput());
+  pd->Update();
+
+  int NCells = pd->GetNumberOfCells();
+  vtkIntArray *subdomain_id = vtkIntArray::New();
+  subdomain_id->SetName("subdomain id");
+  subdomain_id->SetNumberOfTuples(NCells);
+  subdomain_id->SetNumberOfComponents(1);
+  std::map< std::vector<int>, int > lut;
+  for(int i=0;i<NCells;i++){
+    std::vector<int> tuple3;
+    tuple3.push_back(pd->GetCellData()->GetArray(0)->GetTuple(i)[0]);
+    tuple3.push_back(pd->GetCellData()->GetArray(0)->GetTuple(i)[1]);
+    tuple3.push_back(pd->GetCellData()->GetArray(0)->GetTuple(i)[2]);
+    lut[tuple3] = 0;
+  }
+  {
+    int colour = 1;
+    for(std::map< std::vector<int>, int >::iterator it=lut.begin();it!=lut.end();++it){
+      it->second = colour++;
+    }
+  }
+  for(int i=0;i<NCells;i++){
+    std::vector<int> tuple3;
+    tuple3.push_back(pd->GetCellData()->GetArray(0)->GetTuple(i)[0]);
+    tuple3.push_back(pd->GetCellData()->GetArray(0)->GetTuple(i)[1]);
+    tuple3.push_back(pd->GetCellData()->GetArray(0)->GetTuple(i)[2]);
+
+    subdomain_id->SetValue(i, lut[tuple3]);
+  }
+
+  pd->GetCellData()->RemoveArray(0);
+  pd->GetCellData()->AddArray(subdomain_id);
+  subdomain_id->Delete();
+
+  std::string basename(argv[1], std::string(argv[1]).find(".tif"));
+  std::string filename(std::string(basename+".vtp"));
+
   vtkXMLPolyDataWriter *writer = vtkXMLPolyDataWriter::New();
-  writer->SetFileName("ug.vtp");
-  writer->SetInput(ug);
+  writer->SetFileName(filename.c_str());
+  writer->SetInput(pd);
   writer->Write();
 
   return 0;

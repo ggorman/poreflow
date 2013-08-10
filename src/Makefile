@@ -9,5 +9,5 @@ VTK_LIBS = -lvtkIO -lvtkHybrid -lvtkGraphics -lvtkFiltering -lvtkCommon
 LIBS = $(CGAL_LIBS) $(VTK_LIBS)
 
 default:
-	$(CXX) $(CXXFLAGS) -o mesh_2d_tiff mesh_2d_tiff.cpp $(LIBS)
+	$(CXX) $(CXXFLAGS) -o ../bin/mesh_2d_tiff mesh_2d_tiff.cpp $(LIBS)
 
