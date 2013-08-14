@@ -45,6 +45,43 @@ typedef CGAL::Mesh_criteria_3<Tr> Mesh_criteria;
 // To avoid verbose function and named parameters call
 using namespace CGAL::parameters;
 
+int write_triangle_files_3d(std::string basename, std::vector<double> &xyz, std::vector<int> &cells, std::vector<int> &region_id, std::vector<int> &facets, std::vector<int> &boundary_id){
+  // Write node file.
+  std::ofstream node_file;
+  node_file.open(std::string(basename+".node").c_str());
+
+  int NNodes = xyz.size()/3;
+  node_file<<NNodes<<" 3 0 0\n";
+  for(int i=0;i<NNodes;i++){
+    node_file<<i<<" "<<xyz[i*3]<<" "<<xyz[i*3+1]<<" "<<xyz[i*3+2]<<std::endl;
+  }
+  node_file.close();
+
+  // Write ele file
+  std::ofstream ele_file;
+  ele_file.open(std::string(basename+".ele").c_str());
+
+  int NCells = cells.size()/4;
+  ele_file<<NCells<<" 4 1\n";
+  for(int i=0;i<NCells;i++){
+    ele_file<<i<<" "<<cells[i*4]<<" "<<cells[i*4+1]<<" "<<cells[i*4+2]<<" "<<cells[i*4+3]<<" "<<region_id[i]<<std::endl;
+  }
+  ele_file.close();
+
+  // Write face file
+  std::ofstream face_file;
+  face_file.open(std::string(basename+".face").c_str());
+
+  int NFacets = facets.size()/3;
+  face_file<<NFacets<<" 1\n";
+  for(int i=0;i<NFacets;i++){
+    face_file<<i<<" "<<facets[i*3]<<" "<<facets[i*3+1]<<" "<<facets[i*3+2]<<" "<<boundary_id[i]<<std::endl;
+  }
+  face_file.close();
+
+  return(0);
+}
+
 int main(int argc, char **argv){
   if(argc==1){
     std::cout<<"Usage: "<<argv[0]<< "image_layer1.tiff image_layer2.tiff image_layer3.tiff ...\n";
@@ -54,6 +91,8 @@ int main(int argc, char **argv){
   int nframes = argc-1;
   char **filenames = argv+1;
   
+  std::string basename(filenames[0], std::string(filenames[0]).find(".tif"));
+
   // Load image stack
   vtkTIFFReader *tiffreader = vtkTIFFReader::New();
   tiffreader->SetFileName(filenames[0]);
@@ -178,7 +217,7 @@ int main(int argc, char **argv){
   vtk_subdomain_index->Delete();
 
   vtkXMLUnstructuredGridWriter *tet_writer = vtkXMLUnstructuredGridWriter::New();
-  tet_writer->SetFileName("out.vtu");
+  tet_writer->SetFileName(std::string(basename+".vtu").c_str());
   tet_writer->SetInput(ug_tets);
   tet_writer->Write();
   
@@ -301,12 +340,14 @@ int main(int argc, char **argv){
   vtk_boundary_id->Delete();
 
   vtkXMLUnstructuredGridWriter *tri_writer = vtkXMLUnstructuredGridWriter::New();
-  tri_writer->SetFileName("facets.vtu");
+  tri_writer->SetFileName(std::string(basename+"_facets.vtu").c_str());
   tri_writer->SetInput(ug_tris);
   tri_writer->Write();
   
   ug_tris->Delete();
   tri_writer->Delete();
+  
+  write_triangle_files_3d(basename, xyz, enlist, subdomain_index, facets, boundary_id);
 
   return 0;
 }
