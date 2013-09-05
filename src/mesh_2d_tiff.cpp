@@ -64,18 +64,18 @@ int write_triangle_files_2d(std::string basename, std::vector<double> &xy, std::
   int NCells = cells.size()/3;
   ele_file<<NCells<<" 3 1\n";
   for(int i=0;i<NCells;i++){
-    ele_file<<i<<" "<<cells[i*3]<<" "<<cells[i*3+1]<<" "<<cells[i*3+2]<<" "<<region_id[i]<<std::endl;
+    ele_file<<i+1<<" "<<cells[i*3]+1<<" "<<cells[i*3+1]+1<<" "<<cells[i*3+2]+1<<" "<<region_id[i]<<std::endl;
   }
   ele_file.close();
 
   // Write edge file
   std::ofstream edge_file;
-  edge_file.open(std::string(basename+".edge").c_str());
+  edge_file.open(std::string(basename+".face").c_str());
 
   int NFacets = facets.size()/2;
   edge_file<<NFacets<<" 1\n";
   for(int i=0;i<NFacets;i++){
-    edge_file<<i<<" "<<facets[i*2]<<" "<<facets[i*2+1]<<" "<<boundary_id[i]<<std::endl;
+    edge_file<<i+1<<" "<<facets[i*2]+1<<" "<<facets[i*2+1]+1<<" "<<boundary_id[i]<<std::endl;
   }
   edge_file.close();
 

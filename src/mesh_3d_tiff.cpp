@@ -64,7 +64,7 @@ int write_triangle_files_3d(std::string basename, std::vector<double> &xyz, std:
   int NCells = cells.size()/4;
   ele_file<<NCells<<" 4 1\n";
   for(int i=0;i<NCells;i++){
-    ele_file<<i<<" "<<cells[i*4]<<" "<<cells[i*4+1]<<" "<<cells[i*4+2]<<" "<<cells[i*4+3]<<" "<<region_id[i]<<std::endl;
+    ele_file<<i+1<<" "<<cells[i*4]+1<<" "<<cells[i*4+1]+1<<" "<<cells[i*4+2]+1<<" "<<cells[i*4+3]+1<<" "<<region_id[i]<<std::endl;
   }
   ele_file.close();
 
@@ -75,7 +75,7 @@ int write_triangle_files_3d(std::string basename, std::vector<double> &xyz, std:
   int NFacets = facets.size()/3;
   face_file<<NFacets<<" 1\n";
   for(int i=0;i<NFacets;i++){
-    face_file<<i<<" "<<facets[i*3]<<" "<<facets[i*3+1]<<" "<<facets[i*3+2]<<" "<<boundary_id[i]<<std::endl;
+    face_file<<i+1<<" "<<facets[i*3]+1<<" "<<facets[i*3+1]+1<<" "<<facets[i*3+2]+1<<" "<<boundary_id[i]<<std::endl;
   }
   face_file.close();
 
