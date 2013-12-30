@@ -656,19 +656,78 @@ int main(int argc, char **argv){
 
   write_vtk_file(basename+"_original", xyz, tets, facets, facet_ids);
 
-  if(IDs[0]!=-1){
-    // Unhelpful - refine mesh instead.
-    // if(verbose) std::cout<<"INFO: Purging locked elements."<<filename<<std::endl;
-    // purge_locked(xyz.size()/3, tets);
-    // if(verbose) std::cout<<"INFO: Finished purge."<<filename<<std::endl;
+  // Characterise boundaries
+  std::map<int, std::vector<double> > mean_boundary_coordinate;
+  std::map<int, int> boundary_count;
+  for(size_t i=0;i<facet_ids.size();i++){
+    std::vector<double> coord(3, 0.0);
+    for(size_t j=0;j<3;j++){
+      for(size_t k=0;k<3;k++){
+        coord[k]+=xyz[facets[i*3+j]*3+k];
+      }
+    }
+    if(mean_boundary_coordinate.count(facet_ids[i])){
+      for(size_t k=0;k<3;k++){
+        mean_boundary_coordinate[facet_ids[i]][k]+=coord[k];
+      }
+      boundary_count[facet_ids[i]]++;
+    }else{
+      mean_boundary_coordinate[facet_ids[i]]=coord;
+      boundary_count[facet_ids[i]] = 1;
+    }
+  }
+  std::vector<double> bbox(6);
+  std::vector<int> sorted_ids(6);
+  {
+    std::map<int, std::vector<double> >::iterator it=mean_boundary_coordinate.begin();
+    for(size_t i=0;i<3;i++){
+      it->second[i]/=(3*boundary_count[it->first]);
 
-    if(verbose) std::cout<<"INFO: Trimming inactive regions."<<filename<<std::endl;
-    trim_channels(IDs, xyz, tets, facets, facet_ids);
-    if(verbose) std::cout<<"INFO: Finished trimming."<<filename<<std::endl;
+      bbox[i*2] = it->second[i];
+      bbox[i*2+1] = it->second[i];
+  
+      sorted_ids[i*2] = it->first;
+      sorted_ids[i*2+1] = it->first;
+    }
+    ++it;
+    for(;it!=mean_boundary_coordinate.end();++it){
+      for(size_t i=0;i<3;i++){
+        it->second[i]/=(3*boundary_count[it->first]);
+
+        if(it->second[i]<bbox[i*2]){
+          bbox[i*2] = it->second[i];
+          sorted_ids[i*2] = it->first;
+        }
+
+        if(it->second[i]>bbox[i*2+1]){
+          bbox[i*2+1] = it->second[i];
+          sorted_ids[i*2+1] = it->first;
+        }
+      }
+    }
   }
 
-  write_vtk_file(basename, xyz, tets, facets, facet_ids);
-  write_gmsh_file(basename, xyz, tets, facets, facet_ids);
+  // 
+  std::vector<double> orig_xyz = xyz;
+  std::vector<int> orig_tets = tets, orig_facets = facets, orig_facet_ids = facet_ids;
+
+  for(size_t i=0;i<3;i++){
+    if(i!=0){
+      xyz = orig_xyz;
+      tets = orig_tets;
+      facets = orig_facets;
+      facet_ids = orig_facet_ids;
+    }
+
+    if(verbose) std::cout<<"INFO: Trimming inactive regions."<<filename<<std::endl;
+    trim_channels(&(sorted_ids[i*2]), xyz, tets, facets, facet_ids);
+    if(verbose) std::cout<<"INFO: Finished trimming."<<filename<<std::endl;
+
+    std::ostringstream filename;
+    filename<<basename<<"_axis_"<<i<<"_ids_"<<sorted_ids[i*2]<<"_"<<sorted_ids[i*2+1];
+    write_vtk_file(filename.str(), xyz, tets, facets, facet_ids);
+    write_gmsh_file(filename.str(), xyz, tets, facets, facet_ids);
+  }
 
   return 0;
 }
