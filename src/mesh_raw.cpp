@@ -88,8 +88,13 @@ int write_triangle_files_3d(std::string basename, std::vector<double> &xyz, std:
 
 int main(int argc, char **argv){
   if(argc==1){
-    std::cout<<"Usage: "<<argv[0]<< "CT-image\n";
+    std::cout<<"Usage: "<<argv[0]<< "CT-image [subsample]\n";
     return 0;
+  }
+
+  int subsample=1;
+  if(argc==3){
+    subsample = atoi(argv[2]);
   }
 
   boost::filesystem::path image_dir(argv[1]);  
@@ -121,6 +126,7 @@ int main(int argc, char **argv){
 	info>>dims[i];
     }else if(buffer==std::string("Resolution:")){
       info>>resolution;
+      resolution*=1.0e-6;
     }
   }
   info.close();
@@ -143,17 +149,25 @@ int main(int argc, char **argv){
   ImageIO_free(image.data());
   image.set_data((void*)(&raw_image[0])); 
 
-#if 0
 
   // Domain
   Mesh_domain domain(image);
 
   // Mesh criteria
-  Mesh_criteria criteria(facet_angle=30, facet_size=2*spacing[0],
-                         cell_radius_edge_ratio=10, cell_size=2*spacing[0]);
+  Mesh_criteria criteria(facet_angle=25, facet_size=subsample*resolution,
+                         cell_radius_edge_ratio=3, cell_size=subsample*resolution);
 
-  // Meshing
-  C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria);
+  // Mesh generation and optimization in one call
+  C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria,
+                                      lloyd(time_limit=30),
+                                      no_perturb(),
+                                      exude(time_limit=10, sliver_bound=10));
+
+  // C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria);
+
+  // Mesh generation and optimization in several call
+  //C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria,
+  //                                    no_perturb(), no_exude());
 
   // Output
   //
@@ -230,7 +244,7 @@ int main(int argc, char **argv){
   vtk_subdomain_index->Delete();
 
   vtkXMLUnstructuredGridWriter *tet_writer = vtkXMLUnstructuredGridWriter::New();
-  tet_writer->SetFileName(std::string(basename+".vtu").c_str());
+  tet_writer->SetFileName(std::string(stem.string()+".vtu").c_str());
   tet_writer->SetInput(ug_tets);
   tet_writer->Write();
   
@@ -353,15 +367,14 @@ int main(int argc, char **argv){
   vtk_boundary_id->Delete();
 
   vtkXMLUnstructuredGridWriter *tri_writer = vtkXMLUnstructuredGridWriter::New();
-  tri_writer->SetFileName(std::string(basename+"_facets.vtu").c_str());
+  tri_writer->SetFileName(std::string(stem.string()+"_facets.vtu").c_str());
   tri_writer->SetInput(ug_tris);
   tri_writer->Write();
   
   ug_tris->Delete();
   tri_writer->Delete();
   
-  write_triangle_files_3d(basename, xyz, enlist, subdomain_index, facets, boundary_id);
-#endif
+  // write_triangle_files_3d(basename, xyz, enlist, subdomain_index, facets, boundary_id);
 
   return 0;
 }

@@ -1,7 +1,7 @@
 CXX = g++
 
 CPPFLAGS = -I/usr/include/vtk-5.8
-CXXFLAGS = $(CPPFLAGS) -g -O2 -frounding-math -Wno-deprecated
+CXXFLAGS = $(CPPFLAGS) -g -Ofast -frounding-math -Wno-deprecated
 
 CGAL_LIBS = -lCGAL -lCGAL_ImageIO -lgmp -lmpfr -lboost_thread -lpthread
 VTK_LIBS = -lvtkIO -lvtkHybrid -lvtkGraphics -lvtkFiltering -lvtkCommon
