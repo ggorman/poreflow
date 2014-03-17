@@ -25,17 +25,16 @@ void usage(char *cmd){
            <<"\nOptions:\n"
            <<" -h, --help\n\tHelp! Prints this message.\n"
            <<" -v, --verbose\n\tVerbose output.\n"
-           <<" -b ID0,ID1, --boundary ID0, ID1\n\tBoundary ID's corresponding to the inflow and outflow.\n";
+           <<" -t, --toggle\n\tToggle the material selection for the mesh.\n";
   return;
 }
 
 int parse_arguments(int argc, char **argv,
-                    std::string &filename, bool &verbose, int *IDs){
+                    std::string &filename, bool &verbose, bool &toggle_material){
 
   // Set defaults
   verbose = false;
-  IDs[0]=-1;
-  IDs[0]=-1;
+  toggle_material = false;
 
   if(argc==1){
     usage(argv[0]);
@@ -43,21 +42,16 @@ int parse_arguments(int argc, char **argv,
   }
 
   struct option longOptions[] = {
-    {"help", 0, 0, 'h'},
+    {"help",    0, 0, 'h'},
     {"verbose", 0, 0, 'v'},
-    {"boundary", optional_argument, 0, 'b'},
-    
+    {"toggle",  0, 0, 't'},
     {0, 0, 0, 0}
   };
 
   int optionIndex = 0;
   int verbosity = 0;
   int c;
-  const char *shortopts = "hvb:";
-
-  std::string boundary_str;
-  size_t pos;
-  std::stringstream id0, id1;
+  const char *shortopts = "hvt";
 
   // Set opterr to nonzero to make getopt print error messages
   opterr=1;
@@ -73,23 +67,9 @@ int parse_arguments(int argc, char **argv,
     case 'v':
       verbose = true;
       break;
-    case 'b':
-      boundary_str = std::string(optarg);
-      pos = boundary_str.find(",", 0);
-      if(pos == std::string::npos){
-        std::cerr<<"ERROR: boundary not specified correctly.\n";
-        usage(argv[0]);
-        exit(0);
-      }
-      id0<<boundary_str.substr(0, pos);
-      if(!(id0>>IDs[0])) // Give the value to Result using the characters in the string
-        IDs[0] = -1;
-      id1<<boundary_str.substr(pos+1);
-      if(!(id1>>IDs[1])) // Give the value to Result using the characters in the string
-        IDs[1] = -1;
-
-      // parse optarg
-      break;    
+    case 't':
+      toggle_material = true;
+      break;
     case '?':
       // missing argument only returns ':' if the option string starts with ':'
       // but this seems to stop the printing of error messages by getopt?
@@ -135,11 +115,9 @@ double volume(const double *x0, const double *x1, const double *x2, const double
     return (-x03*(z02*y01 - z01*y02) + x02*(z03*y01 - z01*y03) - x01*(z03*y02 - z02*y03))/6;
   }
 
-int read_tarantula_mesh_file(std::string filename,
+int read_tarantula_mesh_file(std::string filename, bool toggle_material,
                              std::vector<double> &xyz,
-                             std::vector<int> &tets, 
-                             std::vector<int> &facets,
-                             std::vector<int> &facet_ids){
+                             std::vector<int> &tets){
   std::ifstream infile;
   infile.open(filename.c_str());
   
@@ -176,43 +154,50 @@ int read_tarantula_mesh_file(std::string filename,
     infile>>tets[i*4+3];
   }
 
-  // Read facets
+  // Read materials
+  std::vector< std::vector<size_t> > materials;
   while(infile.good()){
-    // Stream through file until we find facet data.
+    // Stream through file until we find material data.
     std::getline(infile, throwaway); 
-    if(throwaway.substr(0, 4)!="Face")
+    if(throwaway.substr(0, 3)!="mat")
       continue;
 
-    // Get facet ID
-    std::stringstream id_ss(throwaway.substr(4));
-    int id;
-    id_ss>>id;
-
-    std::getline(infile, throwaway); 
-    int nfacets;
-    infile>>nfacets;
-    nfacets/=2;
-
-    for(int i=0;i<nfacets;i++){
-      int eid, index;
-      infile>>eid;
-      infile>>index;
-      assert(index<4);
-
-      facet_ids.push_back(id);
-      if(index==0){
-        facets.push_back(tets[eid*4+0]); facets.push_back(tets[eid*4+1]); facets.push_back(tets[eid*4+2]);
-      }else if(index==1){
-        facets.push_back(tets[eid*4+1]); facets.push_back(tets[eid*4+0]); facets.push_back(tets[eid*4+3]);
-      }else if(index==2){
-        facets.push_back(tets[eid*4+2]); facets.push_back(tets[eid*4+1]); facets.push_back(tets[eid*4+3]);
-      }else if(index==3){
-        facets.push_back(tets[eid*4+0]); facets.push_back(tets[eid*4+2]); facets.push_back(tets[eid*4+3]);
-      }
-    }
+    // Junk next line.
+    std::getline(infile, throwaway);
+    
+    // Get number of cells of this material
+    size_t cnt;
+    infile>>cnt;
+    std::vector<size_t> cells(cnt);
+    for(int i=0;i<cnt;i++)
+      infile>>cells[i];
+    materials.push_back(cells);
   }
 
+  // I have no idea what mat0 is.
+  // mat1 appears to be the zero valued voxels
+  // mat2 appears to be the one valued voxels
+  assert(materials.size()==3);
+
+  // Junking the rest of the file.
   infile.close();
+
+  size_t select=2;
+  if(toggle_material)
+    select = 1;
+
+  // Create the mask.
+  std::vector<bool> mask(NTetra, false);
+  for(std::vector<size_t>::const_iterator it=materials[select].begin();it!=materials[select].end();++it){
+    mask[*it] = true;
+  }
+
+  // Turn off masked tets.
+  for(size_t i=0;i<NTetra;i++){
+    if(mask[i])
+      tets[i*4] = -1;
+  }
+  
 }
 
 int write_vtk_file(std::string filename,
@@ -234,6 +219,9 @@ int write_vtk_file(std::string filename,
 
   int NTetra = tets.size()/4;
   for(int i=0;i<NTetra;i++){
+    if(tets[i*4]==-1)
+      continue;
+    
     vtkIdList *idlist = vtkIdList::New();
     for(int j=0;j<4;j++)
       idlist->InsertNextId(tets[i*4+j]);
@@ -248,6 +236,9 @@ int write_vtk_file(std::string filename,
   
   ug_tets->Delete();
   tet_writer->Delete();
+
+  if(facets.empty())
+    return 0;
 
   // Write out facets
   vtkUnstructuredGrid *ug_facets = vtkUnstructuredGrid::New();
@@ -284,34 +275,33 @@ int write_vtk_file(std::string filename,
   return 0;
 }
 
-int trim_channels(const int *id,
-                  std::vector<double> &xyz,
+int create_domain(std::vector<double> &xyz,
                   std::vector<int> &tets, 
                   std::vector<int> &facets,
                   std::vector<int> &facet_ids){
+  
+  // Create node-element adjancy list.
+  size_t NNodes = xyz.size()/3;
 
-  // Create node-element adjancy list - delete invested elements as we go.
-  std::vector< std::set<int> > NEList(xyz.size()/3);
+  std::vector< std::set<int> > NEList(NNodes);
   int NTetra = tets.size()/4;
-  int count_positive=0, count_negative=0;
   for(int i=0;i<NTetra;i++){
     if(tets[i*4]==-1)
       continue;
     
     double v = volume(&xyz[3*tets[i*4]], &xyz[3*tets[i*4+1]], &xyz[3*tets[i*4+2]], &xyz[3*tets[i*4+3]]);
     if(v<0){
+      std::cerr<<"WARNING: Inverted element encountered. Deleting and continuing.\n";
+      for(int j=0;j<4;j++)
+	std::cerr<<i<<", "<<tets[i*4+j]<<": "<<xyz[3*tets[i*4+j]]<<" "<<xyz[3*tets[i*4+j]+1]<<" "<<xyz[3*tets[i*4+j]+2]<<std::endl;
+
       tets[i*4] = -1;
-      count_negative++;
-      continue;
     }else{
-      count_positive++; 
-    }
-  
-    for(int j=0;j<4;j++){
-      NEList[tets[i*4+j]].insert(i);
+      for(int j=0;j<4;j++){
+	NEList[tets[i*4+j]].insert(i);
+      }
     }
   }
-  std::cout<<"Count of positive and negative volumes = "<<count_positive<<", "<<count_negative<<std::endl;
 
   // Create element-element adjancy list
   std::vector<int> EEList(NTetra*4, -1);
@@ -344,55 +334,95 @@ int trim_channels(const int *id,
 #endif
     }
   }
+  NEList.clear();
 
-  // Create full facet ID list. Also, create the initial fronts for
-  // the active region detection.
-  std::map< std::set<int>, int> facet_id_lut;
-  int NFacets = facet_ids.size();
-  for(int i=0;i<NFacets;i++){
-    std::set<int> facet;
-    for(int j=0;j<3;j++){
-      facet.insert(facets[i*3+j]);
+  // Calculate the bounding box.
+  double bbox[] = {xyz[0], xyz[0],
+		   xyz[1], xyz[1],
+		   xyz[2], xyz[2]};
+  for(size_t i=1;i<NNodes;i++){
+    for(size_t j=0;j<3;j++){
+      bbox[j*2  ] = std::min(bbox[j*2  ], xyz[i*3+j]);
+      bbox[j*2+1] = std::max(bbox[j*2+1], xyz[i*3+j]);
     }
-    assert(facet.size()==3);
-    assert(facet_id_lut.find(facet)==facet_id_lut.end());
-    facet_id_lut[facet] = facet_ids[i];
   }
 
+  // Calculate the a element size - use the l-infinity norm.
+  size_t livecnt=0;
+  double eta=0.0;
+  for(size_t i=0;i<NTetra;i++){
+    if(tets[i*4]==-1)
+      continue;
+
+    livecnt++;
+
+    int vid = tets[i*4];
+    double lbbox[] = {xyz[vid*3],   xyz[vid*3],
+		      xyz[vid*3+1], xyz[vid*3+1],
+		      xyz[vid*3+2], xyz[vid*3+2]};
+    for(size_t j=1;j<4;j++){
+      vid = tets[i*4+j];
+      for(size_t k=0;k<3;k++){
+	lbbox[k*2  ] = std::min(lbbox[k*2  ], xyz[vid*3+k]);
+	lbbox[k*2+1] = std::max(lbbox[k*2+1], xyz[vid*3+k]);
+      }
+    }
+    eta += ((lbbox[1]-lbbox[0])+
+	    (lbbox[3]-lbbox[2])+
+	    (lbbox[5]-lbbox[4]));
+  }
+  eta/=(livecnt*3);   // i.e. the mean element size
+  
+  // Define what we mean by a "small" distance.
+  eta*=0.1;
+  
+  // Calculate the facet list, facet id's and the initial forward and
+  // backward fronts.
   std::set<int> front0, front1;
-  std::map< std::set<int>, int> facet_element_lut;
-  for(int i=0;i<NTetra;i++){
+  for(size_t i=0;i<NTetra;i++){
     if(tets[i*4]==-1)
       continue;
     
-    for(int j=0;j<4;j++){
+    for(size_t j=0;j<4;j++){
+      bool is_facet = false;
+      int facet[3];
       if(EEList[i*4+j]==-1){
-        std::set<int> facet;
-        for(int k=1;k<4;k++)
-          facet.insert(tets[i*4+(j+k)%4]);
-        assert(facet.size()==3);
-	assert(facet_element_lut.find(facet)==facet_element_lut.end());
-	facet_element_lut[facet] = i;
-
-        std::map< std::set<int>, int>::iterator facet_id_pair = facet_id_lut.find(facet);
-        if(facet_id_pair==facet_id_lut.end()){
-          facet_ids.push_back(7);
-	  
-	  if(j==0){
-            facets.push_back(tets[i*4+1]); facets.push_back(tets[i*4+3]); facets.push_back(tets[i*4+2]); 
-	  }else if(j==1){
-            facets.push_back(tets[i*4]); facets.push_back(tets[i*4+3]); facets.push_back(tets[i*4+2]);
-	  }else if(j==2){
-            facets.push_back(tets[i*4]); facets.push_back(tets[i*4+3]); facets.push_back(tets[i*4+1]);
-	  }else if(j==3){
-            facets.push_back(tets[i*4]); facets.push_back(tets[i*4+2]); facets.push_back(tets[i*4+1]);
-	  }
-        }else{
-          if(facet_id_pair->second==id[0])
-            front0.insert(i);
-          else if(facet_id_pair->second==id[1])
-            front1.insert(i);
-        }
+	is_facet=true;
+	switch(j){
+	case 0:
+	  facet[0] = tets[i*4+1];
+	  facet[1] = tets[i*4+3];
+	  facet[2] = tets[i*4+2];
+	  break;
+	case 1:
+	  facet[0] = tets[i*4+0];
+	  facet[1] = tets[i*4+2];
+	  facet[2] = tets[i*4+3];
+	  break;
+	case 2:
+	  facet[0] = tets[i*4+0];
+	  facet[1] = tets[i*4+3];
+	  facet[2] = tets[i*4+1];
+	  break;
+	case 3:
+	  facet[0] = tets[i*4+0];
+	  facet[1] = tets[i*4+1];
+	  facet[2] = tets[i*4+2];
+	  break;
+	}
+      }
+      
+      if(is_facet){
+	// Decide boundary id.
+	double mean_x = (xyz[facet[0]*3]+
+			 xyz[facet[1]*3]+
+			 xyz[facet[2]*3])/3.0;
+	
+	if(fabs(mean_x-bbox[0])<eta){
+	  front0.insert(front0.end(), i);
+	}else if(fabs(mean_x-bbox[1])<eta){
+	  front1.insert(front1.end(), i);
+	}
       }
     }
   }
@@ -405,8 +435,9 @@ int trim_channels(const int *id,
     front0.erase(front0.begin());
     if(label[seed]==1)
       continue;
+
     label[seed] = 1;
-    
+
     for(int i=0;i<4;i++){
       int eid = EEList[seed*4+i];
       if(eid!=-1 && label[eid]!=1){
@@ -414,16 +445,17 @@ int trim_channels(const int *id,
       }
     }
   }
-
+  
   // Advance back sweep using front1.
   while(!front1.empty()){
     // Get the next unprocessed element in the set.
     int seed = *front1.begin();
     front1.erase(front1.begin());
-    if(label[seed]!=1) // ie was either never of interest or has been processed in the backsweep.
-      continue;
-    label[seed] = 2;
     
+    if(label[seed]!=1) // i.e. was either never of interest or has been processed in the backsweep.
+      continue;
+    
+    label[seed] = 2;
     for(int i=0;i<4;i++){
       int eid = EEList[seed*4+i];
       if(eid!=-1 && label[eid]==1){
@@ -435,9 +467,6 @@ int trim_channels(const int *id,
   // Find active vertex set and create renumbering.
   std::map<int, int> renumbering;
   for(int i=0;i<NTetra;i++){
-    if(tets[i*4]==-1)
-      continue;
-    
     if(label[i]==2){
       for(int j=0;j<4;j++)
         renumbering.insert(std::pair<int, int>(tets[i*4+j], -1));
@@ -447,8 +476,6 @@ int trim_channels(const int *id,
   // Create new compressed mesh.
   std::vector<double> xyz_new;
   std::vector<int> tets_new;
-  std::vector<int> facets_new;
-  std::vector<int> facet_ids_new;
   int cnt=0;
   for(std::map<int, int>::iterator it=renumbering.begin();it!=renumbering.end();++it){
     it->second = cnt++;
@@ -458,42 +485,82 @@ int trim_channels(const int *id,
     xyz_new.push_back(xyz[(it->first)*3+2]);
   }
   for(int i=0;i<NTetra;i++){
-    if(tets[i*4]==-1)
-      continue;
-    
     if(label[i]==2){
       for(int j=0;j<4;j++){
         tets_new.push_back(renumbering[tets[i*4+j]]);
       }
     }
   }
-  NFacets = facet_ids.size();
-  for(int i=0;i<NFacets;i++){
-    std::set<int> facet;
-    for(int j=0;j<3;j++)
-      facet.insert(facets[i*3+j]);
 
-    // Check if this is an orphaned facet from previous purge.
-    if(facet_element_lut.find(facet)==facet_element_lut.end())
+  // Re-create facets.
+  facets.clear();
+  facet_ids.clear();
+  for(size_t i=0;i<NTetra;i++){
+    if(label[i]!=2)
       continue;
-
-    // Check if this is a newly orphaned facet.
-    if(label[facet_element_lut[facet]]!=2){
-      continue;
-    }
     
-    for(int j=0;j<3;j++){
-      std::map<int, int>::iterator it=renumbering.find(facets[i*3+j]);
-      assert(it!=renumbering.end());
-      facets_new.push_back(it->second);
+    for(size_t j=0;j<4;j++){
+      bool is_facet = false;
+      int facet[3];
+      if(EEList[i*4+j]==-1){
+	is_facet=true;
+	switch(j){
+	case 0:
+	  facet[0] = tets[i*4+1];
+	  facet[1] = tets[i*4+3];
+	  facet[2] = tets[i*4+2];
+	  break;
+	case 1:
+	  facet[0] = tets[i*4+0];
+	  facet[1] = tets[i*4+2];
+	  facet[2] = tets[i*4+3];
+	  break;
+	case 2:
+	  facet[0] = tets[i*4+0];
+	  facet[1] = tets[i*4+3];
+	  facet[2] = tets[i*4+1];
+	  break;
+	case 3:
+	  facet[0] = tets[i*4+0];
+	  facet[1] = tets[i*4+1];
+	  facet[2] = tets[i*4+2];
+	  break;
+	}
+      }
+      
+      if(is_facet){
+	// Insert new facet.
+	for(int k=0;k<3;k++)
+	  facets.push_back(renumbering[facet[k]]);
+	
+	// Decide boundary id.
+	double mean_xyz[3];
+	for(int k=0;k<3;k++)
+	  mean_xyz[k] = (xyz[facet[0]*3+k]+xyz[facet[1]*3+k]+xyz[facet[2]*3+k])/3.0;
+	
+	if(fabs(mean_xyz[0]-bbox[0])<eta){
+	  facet_ids.push_back(1);
+	}else if(fabs(mean_xyz[0]-bbox[1])<eta){
+	  facet_ids.push_back(2);
+	}else if(fabs(mean_xyz[1]-bbox[2])<eta){
+	  facet_ids.push_back(3);
+	}else if(fabs(mean_xyz[1]-bbox[3])<eta){
+	  facet_ids.push_back(4);
+	}else if(fabs(mean_xyz[2]-bbox[4])<eta){
+	  facet_ids.push_back(5);
+	}else if(fabs(mean_xyz[2]-bbox[5])<eta){
+	  facet_ids.push_back(6);
+	}else{
+	  facet_ids.push_back(7);
+	}
+      }
     }
-    
-    facet_ids_new.push_back(facet_ids[i]);
   }
+
   xyz.swap(xyz_new);
   tets.swap(tets_new);
-  facets.swap(facets_new);
-  facet_ids.swap(facet_ids_new);
+
+  return 0;
 }
 
 int purge_locked(size_t NNodes, std::vector<int> &tets){
@@ -642,92 +709,39 @@ int write_gmsh_file(std::string basename,
 
 int main(int argc, char **argv){
   std::string filename;
-  bool verbose;
-  int IDs[2];
-  parse_arguments(argc, argv, filename, verbose, IDs);
+  bool verbose, toggle_material;
+  parse_arguments(argc, argv, filename, verbose, toggle_material);
 
   std::vector<double> xyz;
-  std::vector<int> tets, facets, facet_ids;
+  std::vector<int> tets;
   std::string basename = filename.substr(0, filename.size()-4);
-
-  if(verbose) std::cout<<"INFO: Reading "<<filename<<std::endl;
-  read_tarantula_mesh_file(filename, xyz, tets, facets, facet_ids);
-  if(verbose) std::cout<<"INFO: Finished reading "<<filename<<std::endl;
-
-  write_vtk_file(basename+"_original", xyz, tets, facets, facet_ids);
-
-  // Characterise boundaries
-  std::map<int, std::vector<double> > mean_boundary_coordinate;
-  std::map<int, int> boundary_count;
-  for(size_t i=0;i<facet_ids.size();i++){
-    std::vector<double> coord(3, 0.0);
-    for(size_t j=0;j<3;j++){
-      for(size_t k=0;k<3;k++){
-        coord[k]+=xyz[facets[i*3+j]*3+k];
-      }
-    }
-    if(mean_boundary_coordinate.count(facet_ids[i])){
-      for(size_t k=0;k<3;k++){
-        mean_boundary_coordinate[facet_ids[i]][k]+=coord[k];
-      }
-      boundary_count[facet_ids[i]]++;
-    }else{
-      mean_boundary_coordinate[facet_ids[i]]=coord;
-      boundary_count[facet_ids[i]] = 1;
-    }
-  }
-  std::vector<double> bbox(6);
-  std::vector<int> sorted_ids(6);
-  {
-    std::map<int, std::vector<double> >::iterator it=mean_boundary_coordinate.begin();
-    for(size_t i=0;i<3;i++){
-      it->second[i]/=(3*boundary_count[it->first]);
-
-      bbox[i*2] = it->second[i];
-      bbox[i*2+1] = it->second[i];
   
-      sorted_ids[i*2] = it->first;
-      sorted_ids[i*2+1] = it->first;
-    }
-    ++it;
-    for(;it!=mean_boundary_coordinate.end();++it){
-      for(size_t i=0;i<3;i++){
-        it->second[i]/=(3*boundary_count[it->first]);
+  if(verbose)
+    std::cout<<"INFO: Reading "<<filename<<std::endl;
+  read_tarantula_mesh_file(filename, toggle_material, xyz, tets);
+  if(verbose)
+    std::cout<<"INFO: Finished reading "<<filename<<std::endl;
+  
+  // Generate facets and trim disconnnected parts of the domain.
+  std::vector<int> facets, facet_ids;
+  if(verbose){
+    std::cout<<"INFO: Create the active domain."<<filename<<std::endl;
+    write_vtk_file(basename+"_original", xyz, tets, facets, facet_ids);
+  }  
 
-        if(it->second[i]<bbox[i*2]){
-          bbox[i*2] = it->second[i];
-          sorted_ids[i*2] = it->first;
-        }
-
-        if(it->second[i]>bbox[i*2+1]){
-          bbox[i*2+1] = it->second[i];
-          sorted_ids[i*2+1] = it->first;
-        }
-      }
-    }
+  create_domain(xyz, tets, facets, facet_ids);
+  
+  if(verbose) 
+    std::cout<<"INFO: Active domain created."<<filename<<std::endl;
+  
+  if(verbose){
+    std::cout<<"INFO: Writing out mesh."<<filename<<std::endl;
+    write_vtk_file(basename, xyz, tets, facets, facet_ids);
   }
 
-  // 
-  std::vector<double> orig_xyz = xyz;
-  std::vector<int> orig_tets = tets, orig_facets = facets, orig_facet_ids = facet_ids;
-
-  for(size_t i=0;i<3;i++){
-    if(i!=0){
-      xyz = orig_xyz;
-      tets = orig_tets;
-      facets = orig_facets;
-      facet_ids = orig_facet_ids;
-    }
-
-    if(verbose) std::cout<<"INFO: Trimming inactive regions."<<filename<<std::endl;
-    trim_channels(&(sorted_ids[i*2]), xyz, tets, facets, facet_ids);
-    if(verbose) std::cout<<"INFO: Finished trimming."<<filename<<std::endl;
-
-    std::ostringstream filename;
-    filename<<basename<<"_axis_"<<i<<"_ids_"<<sorted_ids[i*2]<<"_"<<sorted_ids[i*2+1];
-    write_vtk_file(filename.str(), xyz, tets, facets, facet_ids);
-    write_gmsh_file(filename.str(), xyz, tets, facets, facet_ids);
-  }
+  write_gmsh_file(basename, xyz, tets, facets, facet_ids);
+  if(verbose)
+    std::cout<<"INFO: Finished."<<filename<<std::endl;
 
   return 0;
 }

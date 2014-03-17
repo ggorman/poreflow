@@ -20,6 +20,8 @@ typedef Tr::Point Point;
 
 // Criteria
 typedef CGAL::Mesh_criteria_3<Tr> Mesh_criteria;
+typedef CGAL::Mesh_constant_domain_field_3<Mesh_domain::R,
+                                           Mesh_domain::Index> Sizing_field;
 
 #include <vtkPoints.h>
 #include <vtkPointData.h>
@@ -41,6 +43,8 @@ typedef CGAL::Mesh_criteria_3<Tr> Mesh_criteria;
 #include <set>
 
 #include <cassert>
+#include <cstdlib>
+#include <getopt.h>
 
 #include <boost/filesystem.hpp>
 #include "boost/filesystem/fstream.hpp"
@@ -49,332 +53,774 @@ typedef CGAL::Mesh_criteria_3<Tr> Mesh_criteria;
 // To avoid verbose function and named parameters call
 using namespace CGAL::parameters;
 
-int write_triangle_files_3d(std::string basename, std::vector<double> &xyz, std::vector<int> &cells, std::vector<int> &region_id, std::vector<int> &facets, std::vector<int> &boundary_id){
-  // Write node file.
-  std::ofstream node_file;
-  node_file.open(std::string(basename+".node").c_str());
-
-  int NNodes = xyz.size()/3;
-  node_file<<NNodes<<" 3 0 0\n";
-  for(int i=0;i<NNodes;i++){
-    node_file<<i<<" "<<xyz[i*3]<<" "<<xyz[i*3+1]<<" "<<xyz[i*3+2]<<std::endl;
+class CTImage{
+public:
+  CTImage(){
+    verbose = false;
+    for(int i=0;i<3;i++)
+      dims[i] = -1;
+    double resolution=1.0;
   }
-  node_file.close();
-
-  // Write ele file
-  std::ofstream ele_file;
-  ele_file.open(std::string(basename+".ele").c_str());
-
-  int NCells = cells.size()/4;
-  ele_file<<NCells<<" 4 1\n";
-  for(int i=0;i<NCells;i++){
-    ele_file<<i+1<<" "<<cells[i*4]+1<<" "<<cells[i*4+1]+1<<" "<<cells[i*4+2]+1<<" "<<cells[i*4+3]+1<<" "<<region_id[i]<<std::endl;
+  
+  ~CTImage(){
+    delete domain;
   }
-  ele_file.close();
 
-  // Write face file
-  std::ofstream face_file;
-  face_file.open(std::string(basename+".face").c_str());
-
-  int NFacets = facets.size()/3;
-  face_file<<NFacets<<" 1\n";
-  for(int i=0;i<NFacets;i++){
-    face_file<<i+1<<" "<<facets[i*3]+1<<" "<<facets[i*3+1]+1<<" "<<facets[i*3+2]+1<<" "<<boundary_id[i]<<std::endl;
+  void verbose_on(){
+    verbose = true;
   }
-  face_file.close();
 
-  return(0);
+  size_t get_NNodes(){
+    size_t NNodes = xyz.size()/3;
+    if(verbose)
+      std::cout<<"size_t get_NNodes() = "<<NNodes<<std::endl;
+    return NNodes;
+  }
+
+  size_t get_NElements(){
+    size_t NElements = tets.size()/4;
+    if(verbose)
+      std::cout<<"size_t get_NElements() = "<<NElements<<std::endl;
+    return NElements;
+  }
+
+  size_t get_NFacets(){
+    size_t NFacets = facets.size()/3;
+    if(verbose)
+      std::cout<<"size_t get_NFacets() = "<<NFacets<<std::endl;
+    return NFacets;
+  }
+  
+  int read_raw_ese_image(const char *name, int slab_size){
+    if(verbose)
+      std::cout<<"int read_raw_ese_image(char *name, int slab_size)"<<std::endl;
+    
+    boost::filesystem::path image_dir(name);  
+    stem = image_dir.stem();
+    
+    boost::filesystem::path image_info = image_dir/std::string(stem.string()+"_info.txt");
+    boost::filesystem::path image_filename = image_dir/std::string(stem.string()+".raw");
+    
+    if(!boost::filesystem::exists(image_info)){
+      std::cerr<<"ERROR: "<<image_info.string()<<" does not exist.";
+      exit(-1);
+    }
+    
+    if(!boost::filesystem::exists(image_filename)){
+      std::cerr<<"ERROR: "<<image_filename.string()<<" does not exist.";
+      exit(-1);
+    }
+  
+    // Get the metadata.
+    std::ifstream info;
+    info.open(image_info.string().c_str());
+    while(!info.eof()){
+      std::string buffer;
+      info>>buffer;
+      if(buffer==std::string("Size:")){
+	for(int i=0;i<3;i++)
+	  info>>dims[i];
+      }else if(buffer==std::string("Resolution:")){
+	info>>resolution;
+	resolution*=1.0e-6;
+      }
+      if(slab_size>dims[0]){
+	std::cerr<<"WARNING: slab_size larger than original image\n";
+      }
+    }
+    info.close();
+    
+    // Read image.
+    image_size = dims[0]*dims[1]*dims[2];
+    raw_image = new unsigned char[image_size];
+    
+    std::ifstream image_file;
+    image_file.open(image_filename.string().c_str(), std::ios::binary);
+    image_file>>raw_image;
+    image_file.close();
+    
+    if(slab_size>0){
+      int image_size_new = slab_size*slab_size*slab_size;
+      unsigned char *raw_image_new = new unsigned char[image_size_new];
+      int slice_size_new = slab_size*slab_size;
+      int slice_size = dims[0]*dims[0];
+      for(int i=0;i<slab_size;i++){
+	for(int j=0;j<slab_size;j++){
+	  memcpy(raw_image_new+i*slice_size_new+j*slab_size, raw_image+i*slice_size+j*dims[0], slab_size);
+	}
+      }
+      delete [] raw_image;
+      raw_image = raw_image_new;
+      for(int i=0;i<3;i++)
+	dims[i] = slab_size;
+    
+      image_size = image_size_new;
+    }
+    
+    for(int i=0;i<image_size;i++)
+      if(raw_image[i]==0)
+	raw_image[i] = 1;
+      else
+	raw_image[i] = 0;
+    
+    double spacing[] = {1,1,1};
+    
+    image = new CGAL::Image_3(_createImage(dims[0], dims[1], dims[2], 1,
+					   spacing[0], spacing[1], spacing[2],
+					   1, WK_FIXED, SGN_UNSIGNED)); 
+    ImageIO_free(image->data());
+    image->set_data((void*)raw_image); 
+    
+    // Domain
+    domain = new Mesh_domain(*image);
+  }
+
+  void mesh(){
+    if(verbose)
+       std::cout<<"void mesh()\n";
+
+    // Mesh criteria
+    Mesh_criteria criteria(facet_angle=25.0, 
+			   facet_size=1.0,
+			   cell_size=2.0,
+			   facet_distance=0.1);
+    
+    // Mesh_criteria criteria(facet_angle=25, facet_size=subsample*resolution,
+    //                        cell_radius_edge_ratio=3, cell_size=subsample*resolution);
+    
+    //Mesh_criteria criteria(facet_angle=30, facet_size=0.1, facet_distance=0.025,
+    //                       cell_radius_edge_ratio=2, cell_size=5);
+    
+    // Mesh generation and optimization in one call
+    C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(*domain, criteria,
+                                        lloyd(time_limit=60),
+    				        // odt(time_limit=60),
+                                        exude(time_limit=60, sliver_bound=10));
+    
+    // C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(*domain, criteria);
+    
+    // Mesh generation and optimization in several call
+    // C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria,
+    //                                     no_perturb(), no_exude());
+    
+    // Output
+    //
+    
+    // Export points
+    Tr t = c3t3.triangulation();  // get triangulation (needed below)
+    
+    size_t index = 0;
+    std::map<Point, size_t> coordToId;
+    for(Tr::Point_iterator it=t.points_begin();it!=t.points_end();it++, index++){
+      xyz.push_back(resolution*CGAL::to_double(it->x()));
+      xyz.push_back(resolution*CGAL::to_double(it->y()));
+      xyz.push_back(resolution*CGAL::to_double(it->z()));
+      coordToId[*it] = index;
+    }
+    
+    // Export elements
+    for (C3t3::Cells_in_complex_iterator it = c3t3.cells_in_complex_begin(); it != c3t3.cells_in_complex_end(); ++it){
+      tets.push_back(coordToId[it->vertex(0)->point()]);
+      tets.push_back(coordToId[it->vertex(1)->point()]);
+      tets.push_back(coordToId[it->vertex(2)->point()]);
+      tets.push_back(coordToId[it->vertex(3)->point()]);
+    }
+    
+    // Find boundary facets
+    size_t NNodes = get_NNodes();
+    std::vector< std::set<int> > NEList(NNodes);
+
+    size_t NElements = get_NElements();
+    std::vector<int> EEList(NElements*4, -1);
+
+    for(int i=0;i<NElements;i++){
+      for(int j=0;j<4;j++){
+	NEList[tets[i*4+j]].insert(i);
+      }
+    }
+    for(int i=0;i<NElements;i++){
+      for(int j=0;j<4;j++){
+	int n1 = tets[i*4+(j+1)%4];
+	int n2 = tets[i*4+(j+2)%4];
+	int n3 = tets[i*4+(j+3)%4];
+
+	for(std::set<int>::const_iterator it=NEList[n1].begin();it!=NEList[n1].end();++it){
+	  if(*it==i)
+	    continue;
+	  if(NEList[n2].find(*it)!=NEList[n2].end() && NEList[n3].find(*it)!=NEList[n3].end()){
+	    EEList[i*4+j] = *it;
+	    break;
+	  }
+	}
+      }
+    }
+    for(int i=0;i<NElements;i++){
+      if(EEList[i*4]==-1){
+	facets.push_back(tets[i*4+1]);
+	facets.push_back(tets[i*4+2]);
+	facets.push_back(tets[i*4+3]);
+      }
+      if(EEList[i*4+1]==-1){
+	facets.push_back(tets[i*4]);
+	facets.push_back(tets[i*4+3]);
+	facets.push_back(tets[i*4+2]);
+      }
+      if(EEList[i*4+2]==-1){
+	facets.push_back(tets[i*4]);
+	facets.push_back(tets[i*4+1]);
+	facets.push_back(tets[i*4+3]);
+      }
+      if(EEList[i*4+3]==-1){
+	facets.push_back(tets[i*4]);
+	facets.push_back(tets[i*4+2]);
+	facets.push_back(tets[i*4+1]);
+      }
+    }
+
+    size_t NFacets = get_NFacets();
+    
+    // Label the boundary
+    facet_ids = std::vector<int>(NFacets, 7);
+    double dx=0.05*resolution;
+    double dy=0.05*resolution;
+    double dz=0.05*resolution;
+    for(int i=0;i<NFacets;i++){
+      double meanx = (xyz[facets[i*3]*3  ]+xyz[facets[i*3+1]*3  ]+xyz[facets[i*3+2]*3  ])/3;
+      double meany = (xyz[facets[i*3]*3+1]+xyz[facets[i*3+1]*3+1]+xyz[facets[i*3+2]*3+1])/3;
+      double meanz = (xyz[facets[i*3]*3+2]+xyz[facets[i*3+1]*3+2]+xyz[facets[i*3+2]*3+2])/3;
+      
+      if(meanx<dx)
+	facet_ids[i] = 1;
+      else if(((dims[0]-1)*resolution-meanx)<dx)
+	facet_ids[i] = 2;
+      else if(meany<dy)
+	facet_ids[i] = 3;
+      else if(((dims[1]-1)*resolution-meany)<dy)
+	facet_ids[i] = 4;
+      else if(meanz<dz)
+	facet_ids[i] = 5;
+      else if(((dims[2]-1)*resolution-meanz)<dz)
+	facet_ids[i] = 6;
+    }
+  }
+
+  void trim_channels(int in_boundary, int out_boundary){
+    if(verbose)
+      std::cout<<"void trim_channels(int in_boundary, int out_boundary)"<<std::endl;
+    
+    // Create node-element adjancy list - delete invested elements as we go.
+    size_t NNodes = get_NNodes();
+    size_t NElements = get_NElements();
+
+    std::vector< std::set<int> > NEList(NNodes);
+    int count_positive=0, count_negative=0;
+    for(int i=0;i<NElements;i++){
+      if(tets[i*4]==-1)
+	continue;
+      
+      double v = volume(&xyz[3*tets[i*4]], &xyz[3*tets[i*4+1]], &xyz[3*tets[i*4+2]], &xyz[3*tets[i*4+3]]);
+      if(v<0){
+	tets[i*4] = -1;
+	count_negative++;
+	continue;
+      }else{
+	count_positive++; 
+      }
+      
+      for(int j=0;j<4;j++){
+	NEList[tets[i*4+j]].insert(i);
+      }
+    }
+    if(verbose)
+      std::cout<<"Count of positive and negative volumes = "<<count_positive<<", "<<count_negative<<std::endl;
+
+    // Create element-element adjancy list
+    std::vector<int> EEList(NElements*4, -1);
+    for(int i=0;i<NElements;i++){
+      if(tets[i*4]==-1)
+	continue;
+  
+      for(int j=0;j<4;j++){  
+	std::set<int> edge_neighbours;
+	set_intersection(NEList[tets[i*4+(j+1)%4]].begin(), NEList[tets[i*4+(j+1)%4]].end(),
+			 NEList[tets[i*4+(j+2)%4]].begin(), NEList[tets[i*4+(j+2)%4]].end(),
+			 inserter(edge_neighbours, edge_neighbours.begin()));
+      
+	std::set<int> neighbours;
+	set_intersection(NEList[tets[i*4+(j+3)%4]].begin(), NEList[tets[i*4+(j+3)%4]].end(),
+			 edge_neighbours.begin(), edge_neighbours.end(),
+			 inserter(neighbours, neighbours.begin()));
+
+	if(neighbours.size()==2){
+	  if(*neighbours.begin()==i)
+	    EEList[i*4+j] = *neighbours.rbegin();
+	  else
+	    EEList[i*4+j] = *neighbours.begin();
+	}
+#ifndef NDEBUG
+	else{
+	  assert(neighbours.size()==1);
+	  assert(*neighbours.begin()==i);
+	}
+#endif
+      }
+    }
+
+    // Create full facet ID list. Also, create the initial fronts for
+    // the active region detection.
+    std::map< std::set<int>, int> facet_id_lut;
+    int NFacets = facet_ids.size();
+    for(int i=0;i<NFacets;i++){
+      std::set<int> facet;
+      for(int j=0;j<3;j++){
+	facet.insert(facets[i*3+j]);
+      }
+      assert(facet.size()==3);
+      assert(facet_id_lut.find(facet)==facet_id_lut.end());
+      facet_id_lut[facet] = facet_ids[i];
+    }
+
+    std::set<int> front0, front1;
+    std::map< std::set<int>, int> facet_element_lut;
+    for(int i=0;i<NElements;i++){
+      if(tets[i*4]==-1)
+	continue;
+    
+      for(int j=0;j<4;j++){
+	if(EEList[i*4+j]==-1){
+	  std::set<int> facet;
+	  for(int k=1;k<4;k++)
+	    facet.insert(tets[i*4+(j+k)%4]);
+	  assert(facet.size()==3);
+	  assert(facet_element_lut.find(facet)==facet_element_lut.end());
+	  facet_element_lut[facet] = i;
+
+	  std::map< std::set<int>, int>::iterator facet_id_pair = facet_id_lut.find(facet);
+	  if(facet_id_pair==facet_id_lut.end()){
+	    facet_ids.push_back(7);
+	  
+	    if(j==0){
+	      facets.push_back(tets[i*4+1]); facets.push_back(tets[i*4+3]); facets.push_back(tets[i*4+2]); 
+	    }else if(j==1){
+	      facets.push_back(tets[i*4]); facets.push_back(tets[i*4+3]); facets.push_back(tets[i*4+2]);
+	    }else if(j==2){
+	      facets.push_back(tets[i*4]); facets.push_back(tets[i*4+3]); facets.push_back(tets[i*4+1]);
+	    }else if(j==3){
+	      facets.push_back(tets[i*4]); facets.push_back(tets[i*4+2]); facets.push_back(tets[i*4+1]);
+	    }
+	  }else{
+	    if(facet_id_pair->second==in_boundary)
+	      front0.insert(i);
+	    else if(facet_id_pair->second==out_boundary)
+	      front1.insert(i);
+	  }
+	}
+      }
+    }
+  
+    // Advance front0
+    std::vector<int> label(NElements, 0);
+    while(!front0.empty()){
+      // Get the next unprocessed element in the set.
+      int seed = *front0.begin();
+      front0.erase(front0.begin());
+      if(label[seed]==1)
+	continue;
+      label[seed] = 1;
+    
+      for(int i=0;i<4;i++){
+	int eid = EEList[seed*4+i];
+	if(eid!=-1 && label[eid]!=1){
+	  front0.insert(eid);
+	}
+      }
+    }
+
+    // Advance back sweep using front1.
+    while(!front1.empty()){
+      // Get the next unprocessed element in the set.
+      int seed = *front1.begin();
+      front1.erase(front1.begin());
+      if(label[seed]!=1) // ie was either never of interest or has been processed in the backsweep.
+	continue;
+      label[seed] = 2;
+    
+      for(int i=0;i<4;i++){
+	int eid = EEList[seed*4+i];
+	if(eid!=-1 && label[eid]==1){
+	  front1.insert(eid);
+	}
+      }
+    }
+
+    // Find active vertex set and create renumbering.
+    std::map<int, int> renumbering;
+    for(int i=0;i<NElements;i++){
+      if(tets[i*4]==-1)
+	continue;
+    
+      if(label[i]==2){
+	for(int j=0;j<4;j++)
+	  renumbering.insert(std::pair<int, int>(tets[i*4+j], -1));
+      }
+    }
+
+    // Create new compressed mesh.
+    std::vector<double> xyz_new;
+    std::vector<int> tets_new;
+    std::vector<int> facets_new;
+    std::vector<int> facet_ids_new;
+    int cnt=0;
+    for(std::map<int, int>::iterator it=renumbering.begin();it!=renumbering.end();++it){
+      it->second = cnt++;
+    
+      xyz_new.push_back(xyz[(it->first)*3]);
+      xyz_new.push_back(xyz[(it->first)*3+1]);
+      xyz_new.push_back(xyz[(it->first)*3+2]);
+    }
+    for(int i=0;i<NElements;i++){
+      if(tets[i*4]==-1)
+	continue;
+    
+      if(label[i]==2){
+	for(int j=0;j<4;j++){
+	  tets_new.push_back(renumbering[tets[i*4+j]]);
+	}
+      }
+    }
+    NFacets = facet_ids.size();
+    for(int i=0;i<NFacets;i++){
+      std::set<int> facet;
+      for(int j=0;j<3;j++)
+	facet.insert(facets[i*3+j]);
+
+      // Check if this is an orphaned facet from previous purge.
+      if(facet_element_lut.find(facet)==facet_element_lut.end())
+	continue;
+
+      // Check if this is a newly orphaned facet.
+      if(label[facet_element_lut[facet]]!=2){
+	continue;
+      }
+    
+      for(int j=0;j<3;j++){
+	std::map<int, int>::iterator it=renumbering.find(facets[i*3+j]);
+	assert(it!=renumbering.end());
+	facets_new.push_back(it->second);
+      }
+    
+      facet_ids_new.push_back(facet_ids[i]);
+    }
+    xyz.swap(xyz_new);
+    tets.swap(tets_new);
+    facets.swap(facets_new);
+    facet_ids.swap(facet_ids_new);
+  }
+
+  // Write INR file.
+  void write_inr(){
+    if(verbose)
+      std::cout<<"void write_inr()"<<std::endl;
+
+    _writeImage(image->image(), std::string(stem.string()+".inr").c_str()); 
+  }
+
+  // Write NRRD file.
+  void write_nrrd(){
+    if(verbose)
+      std::cout<<"void write_nrrd()"<<std::endl;
+
+    std::ofstream file;
+    file.open(std::string(stem.string()+".nrrd").c_str());
+    file<<"NRRD0004"<<std::endl
+	<<"# Complete NRRD file format specification at:"<<std::endl
+	<<"# http://teem.sourceforge.net/nrrd/format.html"<<std::endl
+	<<"Content: Micro-CT scan of rock sample"<<std::endl
+	<<"type: unsigned char"<<std::endl
+	<<"dimension: 3"<<std::endl
+	<<"space: 3D-right-handed"<<std::endl
+	<<"sizes: "<<dims[0]<<" "<<dims[1]<<" "<<dims[2]<<std::endl
+	<<"spacings: "<<resolution<<" "<<resolution<<" "<<resolution<<std::endl
+	<<"sample units: meters"<<std::endl
+	<<"centerings: cell cell cell"<<std::endl
+	<<"kinds: space space space"<<std::endl
+	<<"endian: little"<<std::endl
+	<<"encoding: raw"<<std::endl
+	<<"space origin: (0,0,0)"<<std::endl
+	<<"measurement frame: (1,0,0) (0,1,0) (0,0,1)"<<std::endl
+	<<"data file: "<<stem.string()+".raw"<<std::endl;
+    file.close();
+
+    std::ofstream image_file;
+    image_file.open(std::string(stem.string()+".raw").c_str(), std::ios::binary);
+    image_file.write((const char *)raw_image, image_size);
+    image_file.close();
+  }
+
+  // Write vox file.
+  void write_vox(){
+    if(verbose)
+      std::cout<<"void write_vox()"<<std::endl;
+
+    std::ofstream file;
+    file.open(std::string(stem.string()+".vox").c_str());
+    file<<dims[0]<<" "<<dims[1]<<" "<<dims[2]<<std::endl;
+    file<<resolution<<" "<<resolution<<" "<<resolution<<std::endl;
+
+    for(size_t i=0;i<image_size;i++)
+      file<<(int)raw_image[i]<<" ";
+    file<<std::endl;
+    file.close();
+  }
+
+  // Write VTK unstructured grid file (*.vtu)
+  void write_vtu(){
+    if(verbose)
+      std::cout<<"void write_vtu()"<<std::endl;
+    
+    // Initalise the vtk mesh
+    vtkUnstructuredGrid *ug_tets = vtkUnstructuredGrid::New();
+    
+    // Write out points
+    size_t NNodes = get_NNodes();
+    vtkPoints *pts = vtkPoints::New();
+    pts->SetNumberOfPoints(NNodes);
+    for(int i=0;i<NNodes;i++){
+      pts->SetPoint(i, &(xyz[i*3]));
+    }
+    ug_tets->SetPoints(pts);
+    
+    size_t NElements = get_NElements();
+    for(int i=0;i<NElements;i++){
+      vtkIdList *idlist = vtkIdList::New();
+      for(int j=0;j<4;j++)
+	idlist->InsertNextId(tets[i*4+j]);
+      ug_tets->InsertNextCell(10, idlist);
+      idlist->Delete();
+    }
+    
+    vtkXMLUnstructuredGridWriter *tet_writer = vtkXMLUnstructuredGridWriter::New();
+    tet_writer->SetFileName(std::string(stem.string()+".vtu").c_str());
+    tet_writer->SetInput(ug_tets);
+    tet_writer->Write();
+    
+    ug_tets->Delete();
+    tet_writer->Delete();
+    
+    // Initalise the vtk mesh
+    vtkUnstructuredGrid *ug_tris = vtkUnstructuredGrid::New();
+    ug_tris->SetPoints(pts);
+    
+    // Write facet
+    size_t NFacets = get_NFacets();
+    for(int i=0;i<NFacets;i++){
+      vtkIdList *idlist = vtkIdList::New();
+      for(int j=0;j<3;j++)
+	idlist->InsertNextId(facets[i*3+j]);
+      ug_tris->InsertNextCell(5, idlist);
+      idlist->Delete();
+    }
+    
+    // Write facet_ids
+    vtkIntArray *vtk_facet_ids = vtkIntArray::New();
+    vtk_facet_ids->SetName("Boundary label");
+    vtk_facet_ids->SetNumberOfComponents(1);
+    vtk_facet_ids->SetNumberOfTuples(NFacets);
+    for(int i=0;i<NFacets;i++)
+      vtk_facet_ids->SetValue(i, facet_ids[i]);
+    ug_tris->GetCellData()->AddArray(vtk_facet_ids);
+    vtk_facet_ids->Delete();
+    
+    vtkXMLUnstructuredGridWriter *tri_writer = vtkXMLUnstructuredGridWriter::New();
+    tri_writer->SetFileName(std::string(stem.string()+"_facets.vtu").c_str());
+    tri_writer->SetInput(ug_tris);
+    tri_writer->Write();
+    
+    ug_tris->Delete();
+    tri_writer->Delete();  
+  }
+
+  int write_gmsh(){
+    if(verbose)
+      std::cout<<"int write_gmsh()"<<std::endl;
+
+    int NNodes = get_NNodes();
+    int NElements = get_NElements();
+    int NFacets = get_NFacets();
+    
+    ofstream file;
+    file.open(std::string(stem.string()+".msh").c_str());
+    file<<"$MeshFormat"<<std::endl
+	<<"2.2 0 8"<<std::endl
+	<<"$EndMeshFormat"<<std::endl
+	<<"$Nodes"<<std::endl
+	<<NNodes<<std::endl;
+    file<<std::setprecision(std::numeric_limits<double>::digits10+1);
+    for(size_t i=0;i<NNodes;i++){
+      file<<i+1<<" "<<xyz[i*3]<<" "<<xyz[i*3+1]<<" "<<xyz[i*3+2]<<std::endl;
+    }
+    file<<"$EndNodes"<<std::endl
+	<<"$Elements"<<std::endl
+	<<NElements+NFacets<<std::endl;
+    for(size_t i=0;i<NElements;i++){
+      file<<i+1<<" 4 1 1 "<<tets[i*4]+1<<" "<<tets[i*4+1]+1<<" "<<tets[i*4+2]+1<<" "<<tets[i*4+3]+1<<std::endl;
+    }
+    for(size_t i=0;i<NFacets;i++){
+      file<<i+NElements+1<<" 2 1 "<<facet_ids[i]<<" "<<facets[i*3]+1<<" "<<facets[i*3+1]+1<<" "<<facets[i*3+2]+1<<std::endl;
+    }
+    file<<"$EndElements"<<std::endl;
+    file.close();
+    
+    return 0;
+  }
+  
+private:
+  double volume(const double *x0, const double *x1, const double *x2, const double *x3) const{
+    
+    double x01 = (x0[0] - x1[0]);
+    double x02 = (x0[0] - x2[0]);
+    double x03 = (x0[0] - x3[0]);
+    
+    double y01 = (x0[1] - x1[1]);
+    double y02 = (x0[1] - x2[1]);
+    double y03 = (x0[1] - x3[1]);
+    
+    double z01 = (x0[2] - x1[2]);
+    double z02 = (x0[2] - x2[2]);
+    double z03 = (x0[2] - x3[2]);
+
+    return (-x03*(z02*y01 - z01*y02) + x02*(z03*y01 - z01*y03) - x01*(z03*y02 - z02*y03))/6;
+  }
+
+  bool verbose;
+  unsigned char *raw_image;
+  int image_size, dims[3];
+  double resolution;
+  CGAL::Image_3 *image;
+  Mesh_domain *domain;
+  boost::filesystem::path stem;
+
+  std::vector<double> xyz;
+  std::vector<int> tets;
+  std::vector<int> facets;
+  std::vector<int> facet_ids;
+};
+
+void usage(char *cmd){
+  std::cout<<"Usage: "<<cmd<<" CT-image [options]\n"
+           <<"\nOptions:\n"
+           <<" -h, --help\n\tHelp! Prints this message.\n"
+           <<" -v, --verbose\n\tVerbose output.\n"
+	   <<" -c format, --convert format\n\tConvert image to another format. Options are vox, nrrd.\n"
+	   <<" -m, --mesh\n\tGenerate a mesh using CGAL.\n"
+           <<" -s width, --slab width\n\tExtract a square block of size 'width' from the data.\n";
+  return;
+}
+
+int parse_arguments(int argc, char **argv,
+                    std::string &filename, bool &verbose, std::string &convert, bool &generate_mesh, int &slab_width){
+
+  // Set defaults
+  verbose = false;
+  generate_mesh = false;
+  slab_width = -1;
+
+  if(argc==1){
+    usage(argv[0]);
+    exit(0);
+  }
+
+  struct option longOptions[] = {
+    {"help",    0,                 0, 'h'},
+    {"verbose", 0,                 0, 'v'},
+    {"convert", optional_argument, 0, 'c'},
+    {"mesh",    0,                 0, 'm'},
+    {"slab",    optional_argument, 0, 's'},
+    {0, 0, 0, 0}
+  };
+
+  int optionIndex = 0;
+  int verbosity = 0;
+  int c;
+  const char *shortopts = "hvc:ms:";
+
+  // Set opterr to nonzero to make getopt print error messages
+  opterr=1;
+  while (true){
+    c = getopt_long(argc, argv, shortopts, longOptions, &optionIndex);
+    
+    if (c == -1) break;
+    
+    switch (c){
+    case 'h':
+      usage(argv[0]);
+      break;
+    case 'v':
+      verbose = true;
+      break;
+    case 'c':
+      convert = std::string(optarg);
+      break;
+    case 'm':
+      generate_mesh = true;
+      break;
+    case 's':
+      slab_width = atoi(optarg);
+      break;    
+    case '?':
+      // missing argument only returns ':' if the option string starts with ':'
+      // but this seems to stop the printing of error messages by getopt?
+      std::cerr<<"ERROR: unknown option or missing argument\n";
+      usage(argv[0]);
+      exit(-1);
+    case ':':
+      std::cerr<<"ERROR: missing argument\n";
+      usage(argv[0]);
+      exit(-1);
+    default:
+      // unexpected:
+      std::cerr<<"ERROR: getopt returned unrecognized character code\n";
+      exit(-1);
+    }
+  }
+
+  filename = std::string(argv[argc-1]);
+
+  return 0;
 }
 
 int main(int argc, char **argv){
   if(argc==1){
-    std::cout<<"Usage: "<<argv[0]<< "CT-image [subsample]\n";
-    return 0;
-  }
-
-  int subsample=1;
-  if(argc==3){
-    subsample = atoi(argv[2]);
-  }
-
-  boost::filesystem::path image_dir(argv[1]);  
-  boost::filesystem::path stem = image_dir.stem();
-
-  boost::filesystem::path image_info = image_dir/std::string(stem.string()+"_info.txt");
-  boost::filesystem::path image_filename = image_dir/std::string(stem.string()+".raw");
-
-  if(!boost::filesystem::exists(image_info)){
-    std::cerr<<"ERROR: "<<image_info.string()<<" does not exist.";
+    usage(argv[0]);
     exit(-1);
   }
-  
-  if(!boost::filesystem::exists(image_filename)){
-    std::cerr<<"ERROR: "<<image_filename.string()<<" does not exist.";
-    exit(-1);
-  }
-  
-  // Get the metadata.
-  std::ifstream info;
-  info.open(image_info.string().c_str());
-  int dims[] = {-1, -1, -1};
-  double resolution=1.0;
-  while(!info.eof()){
-    std::string buffer;
-    info>>buffer;
-    if(buffer==std::string("Size:")){
-      for(int i=0;i<3;i++)
-	info>>dims[i];
-    }else if(buffer==std::string("Resolution:")){
-      info>>resolution;
-      resolution*=1.0e-6;
-    }
-  }
-  info.close();
-
-  // Read image.
-  int image_size = dims[0]*dims[1]*dims[2];
-  unsigned char *raw_image = new unsigned char[image_size];
-
-  std::ifstream image_file;
-  image_file.open(image_filename.string().c_str(), std::ios::binary);
-  image_file>>raw_image;
-  image_file.close();
-
-  double spacing[3];
-  for(int i=0;i<3;i++)
-    spacing[i]=resolution;
-  CGAL::Image_3 image(_createImage(dims[0], dims[1], dims[2], 1,
-                                   spacing[0], spacing[1], spacing[2],
-                                   1, WK_FIXED, SGN_UNSIGNED)); 
-  ImageIO_free(image.data());
-  image.set_data((void*)(&raw_image[0])); 
-
-
-  // Domain
-  Mesh_domain domain(image);
-
-  // Mesh criteria
-  Mesh_criteria criteria(facet_angle=25, facet_size=subsample*resolution,
-                         cell_radius_edge_ratio=3, cell_size=subsample*resolution);
-
-  // Mesh generation and optimization in one call
-  C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria,
-                                      lloyd(time_limit=30),
-                                      no_perturb(),
-                                      exude(time_limit=10, sliver_bound=10));
-
-  // C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria);
-
-  // Mesh generation and optimization in several call
-  //C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria,
-  //                                    no_perturb(), no_exude());
-
-  // Output
-  //
-
-  // Export points
-  Tr t = c3t3.triangulation();  // get triangulation (needed below)
-
-  std::vector<double> xyz;
-  std::map<Point, size_t> coordToId;
-  size_t index = 0;
-  for(Tr::Point_iterator it=t.points_begin();it!=t.points_end();it++, index++){
-    xyz.push_back(CGAL::to_double(it->x()));
-    xyz.push_back(CGAL::to_double(it->y()));
-    xyz.push_back(CGAL::to_double(it->z()));
-    coordToId[*it] = index;
-  }
-  int NNodes = xyz.size()/3;
-  double bounds[6];
-  bounds[0] = xyz[0];
-  bounds[1] = xyz[0];
-  bounds[2] = xyz[1];
-  bounds[3] = xyz[1];
-  bounds[4] = xyz[2];
-  bounds[5] = xyz[2];
-  for(int i=0;i<NNodes;i++){
-    bounds[0] = std::min(bounds[0], xyz[i*3]);
-    bounds[1] = std::max(bounds[1], xyz[i*3]);
-    bounds[2] = std::min(bounds[2], xyz[i*3+1]);
-    bounds[3] = std::max(bounds[3], xyz[i*3+1]);
-    bounds[4] = std::min(bounds[4], xyz[i*3+2]);
-    bounds[5] = std::max(bounds[5], xyz[i*3+2]);
-  }
-
-  // Export elements
-  std::vector<int> enlist, subdomain_index;
-  // for(Tr::Finite_cells_iterator it=t.finite_cells_begin();it!=t.finite_cells_end();it++){
-  for (C3t3::Cells_in_complex_iterator it = c3t3.cells_in_complex_begin(); it != c3t3.cells_in_complex_end(); ++it){
-    enlist.push_back(coordToId[it->vertex(0)->point()]);
-    enlist.push_back(coordToId[it->vertex(1)->point()]);
-    enlist.push_back(coordToId[it->vertex(2)->point()]);
-    enlist.push_back(coordToId[it->vertex(3)->point()]);
     
-    subdomain_index.push_back(it->subdomain_index());
-  }
-  size_t NElements = enlist.size()/4;
+  std::string filename, convert;
+  bool verbose, generate_mesh;
+  int slab_width;
 
-  // Write out points
-  vtkPoints *pts = vtkPoints::New();
-  pts->SetNumberOfPoints(NNodes);
-  for(int i=0;i<NNodes;i++){
-    pts->SetPoint(i, &(xyz[i*3]));
-  }
+  parse_arguments(argc, argv,
+		  filename, verbose, convert, generate_mesh, slab_width);
 
-  // Initalise the vtk mesh
-  vtkUnstructuredGrid *ug_tets = vtkUnstructuredGrid::New();
-  ug_tets->SetPoints(pts);
+  CTImage image;
+  if(verbose)
+    image.verbose_on();
   
-  for(int i=0;i<NElements;i++){
-    vtkIdList *idlist = vtkIdList::New();
-    for(int j=0;j<4;j++)
-      idlist->InsertNextId(enlist[i*4+j]);
-    ug_tets->InsertNextCell(10, idlist);
-    idlist->Delete();
-  }
-
-  // Write subdomain index
-  vtkIntArray *vtk_subdomain_index = vtkIntArray::New();
-  vtk_subdomain_index->SetName("Subdomain_index");
-  vtk_subdomain_index->SetNumberOfComponents(1);
-  vtk_subdomain_index->SetNumberOfTuples(NElements);
-  for(int i=0;i<NElements;i++)
-    vtk_subdomain_index->SetValue(i, subdomain_index[i]);
-  ug_tets->GetCellData()->AddArray(vtk_subdomain_index);
-  vtk_subdomain_index->Delete();
-
-  vtkXMLUnstructuredGridWriter *tet_writer = vtkXMLUnstructuredGridWriter::New();
-  tet_writer->SetFileName(std::string(stem.string()+".vtu").c_str());
-  tet_writer->SetInput(ug_tets);
-  tet_writer->Write();
+  image.read_raw_ese_image(filename.c_str(), slab_width);
   
-  ug_tets->Delete();
-  tet_writer->Delete();
+  if(convert==std::string("vox"))
+    image.write_vox();
+  else if(convert==std::string("nrrd"))
+    image.write_nrrd();
 
-  // Find boundary facets
-  std::vector<int> facets;
-  std::vector< std::set<int> > NEList(NNodes);
-  std::vector<int> EEList(NElements*4, -1);
-  for(int i=0;i<NElements;i++){
-    for(int j=0;j<4;j++){
-      NEList[enlist[i*4+j]].insert(i);
-    }
-  }
-  for(int i=0;i<NElements;i++){
-    for(int j=0;j<4;j++){
-      int n1 = enlist[i*4+(j+1)%4];
-      int n2 = enlist[i*4+(j+2)%4];
-      int n3 = enlist[i*4+(j+3)%4];
-
-      for(std::set<int>::const_iterator it=NEList[n1].begin();it!=NEList[n1].end();++it){
-        if(*it==i)
-          continue;
-        if(NEList[n2].find(*it)!=NEList[n2].end() && NEList[n3].find(*it)!=NEList[n3].end()){
-          EEList[i*4+j] = *it;
-          break;
-        }
-      }
-    }
-  }
-  for(int i=0;i<NElements;i++){
-    if(EEList[i*4]==-1){
-      facets.push_back(enlist[i*4+1]);
-      facets.push_back(enlist[i*4+2]);
-      facets.push_back(enlist[i*4+3]);
-    }
-    if(EEList[i*4+1]==-1){
-      facets.push_back(enlist[i*4]);
-      facets.push_back(enlist[i*4+3]);
-      facets.push_back(enlist[i*4+2]);
-    }
-    if(EEList[i*4+2]==-1){
-      facets.push_back(enlist[i*4]);
-      facets.push_back(enlist[i*4+1]);
-      facets.push_back(enlist[i*4+3]);
-    }
-    if(EEList[i*4+3]==-1){
-      facets.push_back(enlist[i*4]);
-      facets.push_back(enlist[i*4+2]);
-      facets.push_back(enlist[i*4+1]);
-    }
-  }
-  int NFacets = facets.size()/3;
-
-  // Characterise the boundary
-  std::vector< std::set<int> > fNEList(NNodes);
-  std::vector<int> fEEList(NFacets*3, -1);
-  for(int i=0;i<NFacets;i++){
-    for(int j=0;j<3;j++){
-      fNEList[facets[i*3+j]].insert(i);
-    }
-  }
-  for(int i=0;i<NFacets;i++){
-    for(int j=0;j<3;j++){
-      int n1 = facets[i*3+(j+1)%3];
-      int n2 = facets[i*3+(j+2)%3];
-      
-      for(std::set<int>::const_iterator it=fNEList[n1].begin();it!=fNEList[n1].end();++it){
-        if(*it==i)
-          continue;
-        if(fNEList[n2].find(*it)!=fNEList[n2].end()){
-          fEEList[i*3+j] = *it;
-          break;
-        }
-      }
-    }
-  }
-
-  std::vector<int> boundary_id(NFacets, -1);
-  double dx=0.5*spacing[0];
-  double dy=0.5*spacing[1];
-  double dz=0.5*spacing[2];
-  for(int i=0;i<NFacets;i++){
-    double meanx = (xyz[facets[i*3]*3  ]+xyz[facets[i*3+1]*3  ]+xyz[facets[i*3+2]*3  ])/3;
-    double meany = (xyz[facets[i*3]*3+1]+xyz[facets[i*3+1]*3+1]+xyz[facets[i*3+2]*3+1])/3;
-    double meanz = (xyz[facets[i*3]*3+2]+xyz[facets[i*3+1]*3+2]+xyz[facets[i*3+2]*3+2])/3;
-
-    std::multimap<double, int> boundary_proximity;
-    boundary_proximity.insert(std::pair<double, int>(meanx-bounds[0], 1));
-    boundary_proximity.insert(std::pair<double, int>(bounds[1]-meanx, 2));
-    boundary_proximity.insert(std::pair<double, int>(meany-bounds[2], 3));
-    boundary_proximity.insert(std::pair<double, int>(bounds[3]-meany, 4));
-    boundary_proximity.insert(std::pair<double, int>(meanz-bounds[4], 5));
-    boundary_proximity.insert(std::pair<double, int>(bounds[5]-meanz, 6));
+  if(generate_mesh){
+    image.mesh();
     
-    boundary_id[i] = boundary_proximity.begin()->second;
+    image.trim_channels(1, 2);
+    
+    image.write_vtu();
+    image.write_gmsh();
   }
-
-  // Initalise the vtk mesh
-  vtkUnstructuredGrid *ug_tris = vtkUnstructuredGrid::New();
-  ug_tris->SetPoints(pts);
-  
-  for(int i=0;i<NFacets;i++){
-    vtkIdList *idlist = vtkIdList::New();
-    for(int j=0;j<3;j++)
-      idlist->InsertNextId(facets[i*3+j]);
-    ug_tris->InsertNextCell(5, idlist);
-    idlist->Delete();
-  }
-
-  // Write boundary_id
-  vtkIntArray *vtk_boundary_id = vtkIntArray::New();
-  vtk_boundary_id->SetName("Boundary id");
-  vtk_boundary_id->SetNumberOfComponents(1);
-  vtk_boundary_id->SetNumberOfTuples(NFacets);
-  for(int i=0;i<NFacets;i++)
-    vtk_boundary_id->SetValue(i, boundary_id[i]);
-  ug_tris->GetCellData()->AddArray(vtk_boundary_id);
-  vtk_boundary_id->Delete();
-
-  vtkXMLUnstructuredGridWriter *tri_writer = vtkXMLUnstructuredGridWriter::New();
-  tri_writer->SetFileName(std::string(stem.string()+"_facets.vtu").c_str());
-  tri_writer->SetInput(ug_tris);
-  tri_writer->Write();
-  
-  ug_tris->Delete();
-  tri_writer->Delete();
-  
-  // write_triangle_files_3d(basename, xyz, enlist, subdomain_index, facets, boundary_id);
 
   return 0;
 }
