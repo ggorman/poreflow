@@ -204,30 +204,32 @@ int read_tarantula_mesh_file(std::string filename, bool toggle_material,
     materials.push_back(cells);
   }
 
-  // I have no idea what mat0 is.
-  // mat1 appears to be the zero valued voxels
-  // mat2 appears to be the one valued voxels
-  assert(materials.size()==3);
-
   // Junking the rest of the file.
   infile.close();
 
-  size_t select=2;
-  if(toggle_material)
-    select = 1;
+  if(materials.size()>1){
+    assert(materials.size()==3);
 
-  // Create the mask.
-  std::vector<bool> mask(NTetra, false);
-  for(std::vector<size_t>::const_iterator it=materials[select].begin();it!=materials[select].end();++it){
-    mask[*it] = true;
-  }
+    // I have no idea what mat0 is.
+    // mat1 appears to be the zero valued voxels
+    // mat2 appears to be the one valued voxels
 
-  // Turn off masked tets.
-  for(size_t i=0;i<NTetra;i++){
-    if(mask[i])
-      tets[i*4] = -1;
+    size_t select=2;
+    if(toggle_material)
+      select = 1;
+
+    // Create the mask.
+    std::vector<bool> mask(NTetra, false);
+    for(std::vector<size_t>::const_iterator it=materials[select].begin();it!=materials[select].end();++it){
+      mask[*it] = true;
+    }
+
+    // Turn off masked tets.
+    for(size_t i=0;i<NTetra;i++){
+      if(mask[i])
+        tets[i*4] = -1;
+    }
   }
-  
 }
 
 int create_domain(std::vector<double> &xyz,
