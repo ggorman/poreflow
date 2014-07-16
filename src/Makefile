@@ -9,12 +9,21 @@ VTK_LIBS = -lvtkIO -lvtkHybrid -lvtkGraphics -lvtkFiltering -lvtkCommon
 BOOST_LIBS =  -lboost_filesystem -lboost_system
 LIBS = $(CGAL_LIBS) $(VTK_LIBS) $(BOOST_LIBS)
 
+objs = writers.o
+
 binaries: ../bin/mesh_raw ../bin/tarantula2gmsh
+
+VPATH = ./:./src
+
+.SUFFIXES: .cpp .F90 .o .lo
+
+.cpp.o:
+	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $<
 
 default: $(binaries)
 
 ../bin/mesh_raw:mesh_raw.cpp
 	$(CXX) $(CXXFLAGS) -o ../bin/mesh_raw mesh_raw.cpp $(LIBS)
 
-../bin/tarantula2gmsh: tarantula2gmsh.cpp
-	$(CXX) $(CXXFLAGS) -o ../bin/tarantula2gmsh tarantula2gmsh.cpp $(LIBS)
+../bin/tarantula2gmsh: $(objs) tarantula2gmsh.cpp
+	$(CXX) $(CXXFLAGS) -o ../bin/tarantula2gmsh tarantula2gmsh.cpp $(objs) $(LIBS)
