@@ -9,9 +9,9 @@ VTK_LIBS = -lvtkIO -lvtkHybrid -lvtkGraphics -lvtkFiltering -lvtkCommon
 BOOST_LIBS =  -lboost_filesystem -lboost_system
 LIBS = $(CGAL_LIBS) $(VTK_LIBS) $(BOOST_LIBS)
 
-objs = writers.o
+objs = writers.o CTImage.o
 
-binaries: ../bin/mesh_raw ../bin/tarantula2gmsh
+binaries: ../bin/convert_microct ../bin/mesh_microct ../bin/tarantula2gmsh
 
 VPATH = ./:./src
 
@@ -22,8 +22,11 @@ VPATH = ./:./src
 
 default: $(binaries)
 
-../bin/mesh_raw:mesh_raw.cpp
-	$(CXX) $(CXXFLAGS) -o ../bin/mesh_raw mesh_raw.cpp $(LIBS)
+../bin/mesh_microct: $(objs) mesh_microct.cpp
+	$(CXX) $(CXXFLAGS) -o ../bin/mesh_microct mesh_microct.cpp $(objs) $(LIBS)
+
+../bin/convert_microct: $(objs) convert_microct.cpp
+	$(CXX) $(CXXFLAGS) -o ../bin/convert_microct convert_microct.cpp $(objs) $(LIBS)
 
 ../bin/tarantula2gmsh: $(objs) tarantula2gmsh.cpp
 	$(CXX) $(CXXFLAGS) -o ../bin/tarantula2gmsh tarantula2gmsh.cpp $(objs) $(LIBS)
