@@ -30,3 +30,6 @@ default: $(binaries)
 
 ../bin/tarantula2gmsh: $(objs) tarantula2gmsh.cpp
 	$(CXX) $(CXXFLAGS) -o ../bin/tarantula2gmsh tarantula2gmsh.cpp $(objs) $(LIBS)
+
+clean:
+	rm -rf $(binaries) $(objs)
