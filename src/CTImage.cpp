@@ -105,39 +105,66 @@ int CTImage::read_raw_ese_image(const char *name, int slab_size){
   boost::filesystem::path image_dir(name);  
   stem = image_dir.stem();
 
-  boost::filesystem::path image_info = image_dir/std::string(stem.string()+"_info.txt");
-  boost::filesystem::path image_filename = image_dir/std::string(stem.string()+".raw");
+  bool found_metadata=false;
+  {
+    boost::filesystem::path image_info = image_dir/std::string(stem.string()+"_info.txt");
+    if(boost::filesystem::exists(image_info)){
+      found_metadata=true;
 
-  if(!boost::filesystem::exists(image_info)){
-    std::cerr<<"ERROR: "<<image_info.string()<<" does not exist.";
-    exit(-1);
+      // Get the metadata.
+      std::ifstream info;
+      info.open(image_info.string().c_str());
+      while(!info.eof()){
+        std::string buffer;
+        info>>buffer;
+        if(buffer==std::string("Size:")){
+          for(int i=0;i<3;i++)
+            info>>dims[i];
+        }else if(buffer==std::string("Resolution:")){
+          info>>resolution;
+          resolution*=1.0e-6;
+        }
+        if(slab_size>dims[0]){
+          std::cerr<<"WARNING: slab_size larger than original image\n";
+        }
+      }
+      info.close();
+    }
   }
 
-  if(!boost::filesystem::exists(image_filename)){
-    std::cerr<<"ERROR: "<<image_filename.string()<<" does not exist.";
-    exit(-1);
-  }
+  if(!found_metadata){
+    boost::filesystem::path image_info = image_dir/std::string(stem.string()+".dat");
+    if(boost::filesystem::exists(image_info)){
+      found_metadata=true;
 
-  // Get the metadata.
-  std::ifstream info;
-  info.open(image_info.string().c_str());
-  while(!info.eof()){
-    std::string buffer;
-    info>>buffer;
-    if(buffer==std::string("Size:")){
+      // Get the metadata.
+      std::ifstream info;
+      info.open(image_info.string().c_str());
+      std::string buffer;
+      info>>buffer;
+      info>>buffer;
       for(int i=0;i<3;i++)
-	info>>dims[i];
-    }else if(buffer==std::string("Resolution:")){
-      info>>resolution;
-      resolution*=1.0e-6;
+        info>>dims[i];
+
+      double l, r;
+      info>>l; info>>r;
+      resolution = (r-l)/dims[0]*1.0e-6;
+
+      info.close();
     }
     if(slab_size>dims[0]){
       std::cerr<<"WARNING: slab_size larger than original image\n";
     }
   }
-  info.close();
+
+  if(!found_metadata){
+    std::cerr<<"ERROR: Could not find meta-data for CT-Image.";
+    exit(-1);
+  }
 
   // Read image.
+  boost::filesystem::path image_filename = image_dir/std::string(stem.string()+".raw");
+
   image_size = dims[0]*dims[1]*dims[2];
   raw_image = new unsigned char[image_size];
 
