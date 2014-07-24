@@ -1,0 +1,19 @@
+Notes on how to use Tarantula:
+
+Example taken from http://www.biomedsearch.com/nih/Development-Anatomically-Detailed-MRI-Derived/19933417.html
+
+Parameter                       Description                              Value
+ISO_REFINEMENT_LEVEL            Refines surface                          0.5 (isosurface), 3 (levels)
+INTERVAL_REFINEMENT_LEVEL       Refines inner mesh volume                0.5, 1.5 (isosurface lower & upper), 3 (levels)
+BASEH                           Maximal cell width                       8
+NO_SHRINK_ITERATIONS            Number of smoothing steps                1
+SMOOTHING_ITERATIONS            Defines smoothing steps                  5
+TAGGING                         Maps tags from segmentation to mesh      ON
+TETRAHEDRALISE                  Constructs purely tetrahedral mesh       ON
+
+Example usage is:
+
+$ voxmesher hourglass.conf
+
+where hourglass.conf is in data/
+
