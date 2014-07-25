@@ -95,10 +95,10 @@ public:
   void write_vox(const char *filename=NULL);
 
   // Write VTK unstructured grid file (*.vtu)
-  void write_vtu();
+  void write_vtu(const char *filename=NULL);
 
   // Write GMSH file.
-  int write_gmsh();
+  int write_gmsh(const char *filename=NULL);
   
 private:
   double volume(const double *x0, const double *x1, const double *x2, const double *x3) const;

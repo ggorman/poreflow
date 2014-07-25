@@ -39,6 +39,7 @@
 #include <vector>
 #include <string>
 #include <getopt.h>
+#include <cstring>
 
 #include "CTImage.h"
 

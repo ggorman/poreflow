@@ -50,16 +50,18 @@ void usage(char *cmd){
 	   <<" -c format, --convert format\n\tConvert image to another format. Options are vox, nrrd, inr.\n"
            <<" -s width, --slab width\n\tImage width.\n"
            <<" -t width, --throat width\n\tWidth of throat.\n"
+           <<" -m, --mesh\n\tGenerate meshing using CGAL\n"
            <<" -o filename, --output filename\n\tName of outfile.\n";
   return;
 }
 
 int parse_arguments(int argc, char **argv,
-                    std::string &filename, bool &verbose, std::string &convert, int &slab_width, int &throat_width){
+                    std::string &filename, bool &verbose, bool &mesh, std::string &convert, int &slab_width, int &throat_width){
 
   // Set defaults
   filename = std::string("hourglass.vox");
   verbose = false;
+  mesh = false;
   convert = std::string("vox");
   slab_width = 100;
   throat_width = 10;
@@ -75,14 +77,14 @@ int parse_arguments(int argc, char **argv,
     {"convert", optional_argument, 0, 'c'},
     {"slab",    optional_argument, 0, 's'},
     {"throat",  optional_argument, 0, 't'},
+    {"mesh",    0,                 0, 'm'},
     {"output",  optional_argument, 0, 'o'},
     {0, 0, 0, 0}
   };
 
   int optionIndex = 0;
-  int verbosity = 0;
   int c;
-  const char *shortopts = "hvc:s:t:o:";
+  const char *shortopts = "hvc:s:t:mo:";
 
   // Set opterr to nonzero to make getopt print error messages
   opterr=1;
@@ -109,6 +111,9 @@ int parse_arguments(int argc, char **argv,
       break;
     case 'o':
       filename = std::string(optarg);
+      break;
+    case 'm':
+      mesh = true;
       break;
     case '?':
       // missing argument only returns ':' if the option string starts with ':'
@@ -137,10 +142,10 @@ int main(int argc, char **argv){
   }
     
   std::string filename, convert;
-  bool verbose, generate_mesh;
+  bool verbose, mesh;
   int slab_width, throat_width;
 
-  parse_arguments(argc, argv, filename, verbose, convert, slab_width, throat_width);
+  parse_arguments(argc, argv, filename, verbose, mesh, convert, slab_width, throat_width);
 
   CTImage image;
   if(verbose)
@@ -165,6 +170,12 @@ int main(int argc, char **argv){
     image.write_inr(filename.c_str());
   }
 
+  if(mesh){
+    image.mesh();
+    image.write_gmsh(std::string(std::string(filename.c_str(), filename.size()-4)+".msh").c_str());
+
+    image.write_vtu(std::string(std::string(filename.c_str(), filename.size()-4)+".vtu").c_str());
+  }
 
   return 0;
 }

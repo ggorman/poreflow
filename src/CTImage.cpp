@@ -73,8 +73,6 @@ CTImage::CTImage(){
 }
 
 CTImage::~CTImage(){
-  if(image!=NULL)
-    delete image;
   if(raw_image!=NULL)
     delete raw_image;
   if(domain!=NULL)
@@ -198,23 +196,6 @@ int CTImage::read_raw_ese_image(const char *name, int slab_size){
 
     image_size = image_size_new;
   }
-
-  for(int i=0;i<image_size;i++)
-    if(raw_image[i]==0)
-      raw_image[i] = 1;
-    else
-      raw_image[i] = 0;
-
-  double spacing[] = {1,1,1};
-
-  image = new CGAL::Image_3(_createImage(dims[0], dims[1], dims[2], 1,
-	spacing[0], spacing[1], spacing[2],
-	1, WK_FIXED, SGN_UNSIGNED)); 
-  ImageIO_free(image->data());
-  image->set_data((void*)raw_image); 
-
-  // Domain
-  domain = new Mesh_domain(*image);
 }
 
 int CTImage::create_hourglass(int size, int throat_width){
@@ -249,6 +230,17 @@ int CTImage::create_hourglass(int size, int throat_width){
 void CTImage::mesh(){
   if(verbose)
     std::cout<<"void mesh()\n";
+
+  // Create CGAL Image
+  double spacing[] = {1,1,1};
+  image = new CGAL::Image_3(_createImage(dims[0], dims[1], dims[2], 1,
+	spacing[0], spacing[1], spacing[2],
+	1, WK_FIXED, SGN_UNSIGNED)); 
+  ImageIO_free(image->data());
+  image->set_data((void*)raw_image); 
+
+  // Domain
+  domain = new Mesh_domain(*image);
 
   // Mesh criteria
   Mesh_criteria criteria(facet_angle=25.0, 
@@ -655,9 +647,9 @@ void CTImage::write_vox(const char *filename){
 }
 
 // Write VTK unstructured grid file (*.vtu)
-void CTImage::write_vtu(){
+void CTImage::write_vtu(const char *filename){
   if(verbose)
-    std::cout<<"void write_vtu()"<<std::endl;
+    std::cout<<"void write_vtu(const char *filename)"<<std::endl;
 
   // Initalise the vtk mesh
   vtkUnstructuredGrid *ug_tets = vtkUnstructuredGrid::New();
@@ -681,7 +673,10 @@ void CTImage::write_vtu(){
   }
 
   vtkXMLUnstructuredGridWriter *tet_writer = vtkXMLUnstructuredGridWriter::New();
-  tet_writer->SetFileName(std::string(stem.string()+".vtu").c_str());
+  if(filename==NULL)
+    tet_writer->SetFileName(std::string(stem.string()+".vtu").c_str());
+  else
+    tet_writer->SetFileName(filename);
   tet_writer->SetInput(ug_tets);
   tet_writer->Write();
 
@@ -713,7 +708,10 @@ void CTImage::write_vtu(){
   vtk_facet_ids->Delete();
 
   vtkXMLUnstructuredGridWriter *tri_writer = vtkXMLUnstructuredGridWriter::New();
-  tri_writer->SetFileName(std::string(stem.string()+"_facets.vtu").c_str());
+  if(filename==NULL)
+    tri_writer->SetFileName(std::string(stem.string()+"_facets.vtu").c_str());
+  else
+    tri_writer->SetFileName((std::string(filename, strlen(filename)-4)+"_facets.vtu").c_str());
   tri_writer->SetInput(ug_tris);
   tri_writer->Write();
 
@@ -721,7 +719,7 @@ void CTImage::write_vtu(){
   tri_writer->Delete();  
 }
 
-int CTImage::write_gmsh(){
+int CTImage::write_gmsh(const char *filename){
   if(verbose)
     std::cout<<"int write_gmsh()"<<std::endl;
 
@@ -730,7 +728,11 @@ int CTImage::write_gmsh(){
   int NFacets = get_NFacets();
 
   ofstream file;
-  file.open(std::string(stem.string()+".msh").c_str());
+  if(filename==NULL)
+    file.open(std::string(stem.string()+".msh").c_str());
+  else
+    file.open(filename);
+
   file<<"$MeshFormat"<<std::endl
     <<"2.2 0 8"<<std::endl
     <<"$EndMeshFormat"<<std::endl
