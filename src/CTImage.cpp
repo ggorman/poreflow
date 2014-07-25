@@ -226,7 +226,7 @@ int CTImage::create_hourglass(int size, int throat_width){
 
   double dx = 1.0/size;
   double A = (0.5 - throat_width*0.5*dx)*0.5;
-  double offset = A + dx*throat_width*0.5;
+  double offset = A + (1+throat_width)*dx*0.5;
   double two_pi = 2*3.14159265359;
   size_t pos = 0;
   for(size_t i=0;i<size;i++){
