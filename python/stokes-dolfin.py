@@ -1,5 +1,4 @@
-# Solves the Stokes equations using an iterative linear solver.
-# Taken from:
+# Solves the Stokes equation. This is adapted from the fenics example:
 # http://fenicsproject.org/documentation/dolfin/dev/python/demo/pde/stokes-iterative/python/documentation.html
 #
 # Note that the sign for the pressure has been flipped for symmetry."""
@@ -7,9 +6,25 @@
 from dolfin import *
 from numpy import array
 
+import getopt
+
 import sys
 
-set_log_level(DEBUG)
+def usage():
+  print sys.argv[0]+""" [options] dolfin_mesh.xml
+    options:
+      -h    Prints this help message.
+      -d    Enable debugging mode.
+      -D    Use direct solver
+      -v    Enable verbose mode.
+      -e 0-4 where:
+         0  P2 for velocity and P1 for pressure, i.e. Taylor-Hood.
+         1  p3-p1.
+         2  Crouzeix-Raviart.
+         3  p3-DG P1, CD.
+         4  MINI
+      -w L  Width of domain.
+"""
 
 # Test for PETSc or Epetra
 if not has_linear_algebra_backend("PETSc") and not has_linear_algebra_backend("Epetra"):
@@ -21,53 +36,71 @@ if not has_krylov_solver_preconditioner("amg"):
 	 "preconditioner, Hypre or ML.");
     exit()
 
-filename = sys.argv[1]
-try:
-    sample_width = float(sys.argv[2])
-except:
-    sample_width = None
+optlist, args = getopt.getopt(sys.argv[1:], 'Ddhve:')
+
+verbose = False
+element_pair = 0
+sample_width = None
+direct_solver = False
+for opt in optlist:
+  if opt[0] == '-d':
+    set_log_level(DEBUG)
+  elif opt[0] == '-D':
+    direct_solver = True
+  elif opt[0] == '-h':
+    usage()
+    sys.exit(0)
+  elif opt[0] == '-v':
+    verbose = True
+  elif opt[0] == '-e':
+    element_pair = int(opt[1])
+  elif opy[0] == '-w':
+    sample_width = float(opt[1])  
+
+filename = args[-1]
 
 try:
-	axis = int(filename[:-4].split('_')[-4])
-	bc_in = int(filename[:-4].split('_')[-2])
-	bc_out = int(filename[:-4].split('_')[-1])
+  axis = int(filename[:-4].split('_')[-4])
+  bc_in = int(filename[:-4].split('_')[-2])
+  bc_out = int(filename[:-4].split('_')[-1])
 except:
-	axis = 0
-	bc_in = 1
-	bc_out = 2
+  axis = 0
+  bc_in = 1
+  bc_out = 2
 
 mesh = Mesh(filename)
 
 n = FacetNormal(mesh)
 
-
 # Define function spaces 
-# - Taylor-Hood
-#p = 2
-#V = VectorFunctionSpace(mesh, "Lagrange", p)
-#Q = FunctionSpace(mesh, "Lagrange", p-1)
-#W = V * Q
-
-# V = VectorFunctionSpace(mesh, "Lagrange", 3)
-# Q = FunctionSpace(mesh, "Lagrange", 1)
-# W = V * Q
-
-# - Crouzeix-Raviart
-# V = VectorFunctionSpace(mesh, "Crouzeix-Raviart", 1)
-# Q = FunctionSpace(mesh, "Discontinuous Lagrange", 0)
-# W = V * Q
-
-# - CD
-# V = VectorFunctionSpace(mesh, "Lagrange", 3)
-# Q = FunctionSpace(mesh, "Discontinuous Lagrange", 1)
-# W = V * Q
-
-# - MINI
-p = 1
-P1 = VectorFunctionSpace(mesh, "Lagrange", p)
-B = VectorFunctionSpace(mesh, "Bubble", p+3)
-Q = FunctionSpace(mesh, "Lagrange", p)
-W = (P1+B)*Q
+W = None
+if element_pair == 0:
+  # - Taylor-Hood
+  p = 2
+  V = VectorFunctionSpace(mesh, "Lagrange", p)
+  Q = FunctionSpace(mesh, "Lagrange", p-1)
+  W = V * Q
+elif element_pair == 1:
+  V = VectorFunctionSpace(mesh, "Lagrange", 3)
+  Q = FunctionSpace(mesh, "Lagrange", 1)
+  W = V * Q
+elif element_pair == 2:
+  # - Crouzeix-Raviart
+  V = VectorFunctionSpace(mesh, "Crouzeix-Raviart", 1)
+  Q = FunctionSpace(mesh, "Discontinuous Lagrange", 0)
+  W = V * Q
+elif element_pair == 3:
+  # - CD
+  V = VectorFunctionSpace(mesh, "Lagrange", 3)
+  Q = FunctionSpace(mesh, "Discontinuous Lagrange", 1)
+  W = V * Q
+elif element_pair == 4:
+  # - MINI
+  p = 1
+  P1 = VectorFunctionSpace(mesh, "Lagrange", p)
+  B = VectorFunctionSpace(mesh, "Bubble", p+3)
+  Q = FunctionSpace(mesh, "Lagrange", p)
+  W = (P1+B)*Q
 
 # Boundary
 boundaries = MeshFunction('size_t', mesh, filename[0:-4] + "_facet_region.xml")
@@ -91,11 +124,9 @@ for i in range(1, 8):
 (u, p) = TrialFunctions(W)
 (v, q) = TestFunctions(W)
 f = Constant((0.0, 0.0, 0.0))
-# a = inner(grad(u), grad(v))*dx + div(v)*p*dx + q*div(u)*dx - (p*dot(v, n)*ds(bc_in) + p*dot(v, n)*ds(bc_out))
-a = inner(grad(u), grad(v))*dx + div(v)*p*dx + q*div(u)*dx
+a = inner(grad(u), grad(v))*dx + div(v)*p*dx + q*div(u)*dx - (p*dot(v, n)*ds(bc_in) + p*dot(v, n)*ds(bc_out))
+# a = inner(grad(u), grad(v))*dx + div(v)*p*dx + q*div(u)*dx
 L = inner(f, v)*dx
-
-direct_solver = True
 
 # Form for use in constructing preconditioner matrix
 b = inner(grad(u), grad(v))*dx + p*q*dx
@@ -168,7 +199,3 @@ ufile_pvd << u
 pfile_pvd = File("pressure.pvd")
 pfile_pvd << pflip
 
-# Plot solution
-# plot(u)
-# plot(pflip)
-# interactive()
