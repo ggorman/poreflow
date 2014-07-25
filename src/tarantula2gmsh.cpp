@@ -189,7 +189,7 @@ int read_tarantula_mesh_file(std::string filename, bool toggle_material,
   while(infile.good()){
     // Stream through file until we find material data.
     std::getline(infile, throwaway); 
-    if(throwaway.substr(0, 3)!="mat")
+    if(throwaway.substr(0, 4)!="mat1" && throwaway.substr(0, 4)!="mat2")
       continue;
 
     // Junk next line.
@@ -208,15 +208,10 @@ int read_tarantula_mesh_file(std::string filename, bool toggle_material,
   infile.close();
 
   if(materials.size()>1){
-    assert(materials.size()==3);
-
-    // I have no idea what mat0 is.
-    // mat1 appears to be the zero valued voxels
-    // mat2 appears to be the one valued voxels
-
-    size_t select=2;
+    assert(materials.size()==2);
+    size_t select=1;
     if(toggle_material)
-      select = 1;
+      select = 0;
 
     // Create the mask.
     std::vector<bool> mask(NTetra, false);
@@ -538,23 +533,23 @@ int main(int argc, char **argv){
   // Generate facets and trim disconnnected parts of the domain.
   std::vector<int> facets, facet_ids;
   if(verbose){
-    std::cout<<"INFO: Create the active domain."<<filename<<std::endl;
+    std::cout<<"INFO: Create the active domain."<<std::endl;
     write_vtk_file(basename+"_original", xyz, tets, facets, facet_ids);
   }  
 
   create_domain(xyz, tets, facets, facet_ids);
   
   if(verbose) 
-    std::cout<<"INFO: Active domain created."<<filename<<std::endl;
+    std::cout<<"INFO: Active domain created."<<std::endl;
   
   if(verbose){
-    std::cout<<"INFO: Writing out mesh."<<filename<<std::endl;
+    std::cout<<"INFO: Writing out mesh."<<std::endl;
     write_vtk_file(basename, xyz, tets, facets, facet_ids);
   }
 
   write_gmsh_file(basename, xyz, tets, facets, facet_ids);
   if(verbose)
-    std::cout<<"INFO: Finished."<<filename<<std::endl;
+    std::cout<<"INFO: Finished."<<std::endl;
 
   return 0;
 }

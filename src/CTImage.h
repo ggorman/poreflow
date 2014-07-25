@@ -79,19 +79,20 @@ public:
   size_t get_NFacets();
 
   int read_raw_ese_image(const char *name, int slab_size);
+  int create_hourglass(int size, int throat_width);
 
   void mesh();
 
   void trim_channels(int in_boundary, int out_boundary);
 
   // Write INR file.
-  void write_inr();
+  void write_inr(const char *filename=NULL);
 
   // Write NRRD file.
-  void write_nrrd();
+  void write_nrrd(const char *filename=NULL);
 
   // Write vox file.
-  void write_vox();
+  void write_vox(const char *filename=NULL);
 
   // Write VTK unstructured grid file (*.vtu)
   void write_vtu();

@@ -66,11 +66,19 @@ CTImage::CTImage(){
   verbose = false;
   for(int i=0;i<3;i++)
     dims[i] = -1;
-  double resolution=1.0;
+  resolution=1.0;
+  image = NULL;
+  raw_image = NULL;
+  domain = NULL;
 }
 
 CTImage::~CTImage(){
-  delete domain;
+  if(image!=NULL)
+    delete image;
+  if(raw_image!=NULL)
+    delete raw_image;
+  if(domain!=NULL)
+    delete domain;
 }
 
 void CTImage::verbose_on(){
@@ -207,6 +215,35 @@ int CTImage::read_raw_ese_image(const char *name, int slab_size){
 
   // Domain
   domain = new Mesh_domain(*image);
+}
+
+int CTImage::create_hourglass(int size, int throat_width){
+  image_size = size*size*size;
+  raw_image = new unsigned char[image_size];
+  for(int i=0;i<3;i++)
+    dims[i] = size;
+  resolution=1.0/size;
+
+  double dx = 1.0/size;
+  double A = (0.5 - throat_width*0.5*dx)*0.5;
+  double offset = A + dx*throat_width*0.5;
+  double two_pi = 2*3.14159265359;
+  size_t pos = 0;
+  for(size_t i=0;i<size;i++){
+    for(size_t j=0;j<size;j++){
+      for(size_t k=0;k<size;k++){
+        double hourglass = offset + A*cos(k*dx*two_pi);
+        double y = i*dx-0.5;
+        double z = j*dx-0.5;
+        double r = sqrt(y*y+z*z);
+        if(r<=hourglass)
+          raw_image[pos++] = 0;
+        else
+          raw_image[pos++] = 1;
+      }
+    }
+  }
+  return 0;
 }
 
 void CTImage::mesh(){
@@ -552,20 +589,27 @@ void CTImage::trim_channels(int in_boundary, int out_boundary){
 }
 
 // Write INR file.
-void CTImage::write_inr(){
+void CTImage::write_inr(const char *filename){
   if(verbose)
     std::cout<<"void write_inr()"<<std::endl;
 
-  _writeImage(image->image(), std::string(stem.string()+".inr").c_str()); 
+  if(filename==NULL)
+    _writeImage(image->image(), std::string(stem.string()+".inr").c_str()); 
+  else
+    _writeImage(image->image(), filename);
 }
 
 // Write NRRD file.
-void CTImage::write_nrrd(){
+void CTImage::write_nrrd(const char *filename){
   if(verbose)
     std::cout<<"void write_nrrd()"<<std::endl;
 
   std::ofstream file;
-  file.open(std::string(stem.string()+".nrrd").c_str());
+  if(filename==NULL)
+    file.open(std::string(stem.string()+".nrrd").c_str());
+  else
+    file.open(filename);
+
   file<<"NRRD0004"<<std::endl
     <<"# Complete NRRD file format specification at:"<<std::endl
     <<"# http://teem.sourceforge.net/nrrd/format.html"<<std::endl
@@ -592,12 +636,15 @@ void CTImage::write_nrrd(){
 }
 
 // Write vox file.
-void CTImage::write_vox(){
+void CTImage::write_vox(const char *filename){
   if(verbose)
     std::cout<<"void write_vox()"<<std::endl;
 
   std::ofstream file;
-  file.open(std::string(stem.string()+".vox").c_str());
+  if(filename==NULL)
+    file.open(std::string(stem.string()+".vox").c_str());
+  else
+    file.open(filename);
   file<<dims[0]<<" "<<dims[1]<<" "<<dims[2]<<std::endl;
   file<<resolution<<" "<<resolution<<" "<<resolution<<std::endl;
 

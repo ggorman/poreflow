@@ -47,7 +47,7 @@ void usage(char *cmd){
            <<"\nOptions:\n"
            <<" -h, --help\n\tHelp! Prints this message.\n"
            <<" -v, --verbose\n\tVerbose output.\n"
-	   <<" -c format, --convert format\n\tConvert image to another format. Options are vox, nrrd.\n"
+	   <<" -c format, --convert format\n\tConvert image to another format. Options are vox, inr, nrrd.\n"
            <<" -s width, --slab width\n\tExtract a square block of size 'width' from the data.\n";
   return;
 }
@@ -147,6 +147,11 @@ int main(int argc, char **argv){
       std::cout<<"INFO: Write NRRD file\n";
 
     image.write_nrrd();
+  }else if(convert==std::string("inr")){
+    if(verbose)
+      std::cout<<"INFO: Write INR file\n";
+
+    image.write_inr();
   }
 
   return 0;

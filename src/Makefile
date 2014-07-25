@@ -11,7 +11,7 @@ LIBS = $(CGAL_LIBS) $(VTK_LIBS) $(BOOST_LIBS)
 
 objs = writers.o CTImage.o
 
-binaries: ../bin/convert_microct ../bin/mesh_microct ../bin/tarantula2gmsh
+binaries: ../bin/convert_microct ../bin/mesh_microct ../bin/tarantula2gmsh ../bin/create_hourglass
 
 VPATH = ./:./src
 
@@ -30,6 +30,9 @@ default: $(binaries)
 
 ../bin/tarantula2gmsh: $(objs) tarantula2gmsh.cpp
 	$(CXX) $(CXXFLAGS) -o ../bin/tarantula2gmsh tarantula2gmsh.cpp $(objs) $(LIBS)
+
+../bin/create_hourglass: $(objs) create_hourglass.cpp
+	$(CXX) $(CXXFLAGS) -o ../bin/create_hourglass create_hourglass.cpp $(objs) $(LIBS)
 
 clean:
 	rm -rf $(binaries) $(objs)
