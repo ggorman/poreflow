@@ -196,6 +196,9 @@ int CTImage::read_raw_ese_image(const char *name, int slab_size){
 
     image_size = image_size_new;
   }
+
+  for(int i=0;i<image_size;i++)
+    raw_image[i] = (raw_image[i]==0?1:0);
 }
 
 int CTImage::create_hourglass(int size, int throat_width){
