@@ -1,52 +1,43 @@
 # Solves the Stokes equation. This is adapted from the fenics example:
 # http://fenicsproject.org/documentation/dolfin/dev/python/demo/pde/stokes-iterative/python/documentation.html
-#
-# Note that the sign for the pressure has been flipped for symmetry."""
 
 from dolfin import *
 from numpy import array
 
 import getopt
-
 import sys
+import os.path
 
 def usage():
   print sys.argv[0]+""" [options] dolfin_mesh.xml
     options:
       -h    Prints this help message.
       -d    Enable debugging mode.
-      -D    Use direct solver
       -v    Enable verbose mode.
       -e 0-4 where:
          0  P2 for velocity and P1 for pressure, i.e. Taylor-Hood.
          1  p3-p1.
          2  Crouzeix-Raviart.
          3  p3-DG P1, CD.
-         4  MINI
+         4  MINI (default)
       -w L  Width of domain.
 """
 
-# Test for PETSc or Epetra
-if not has_linear_algebra_backend("PETSc") and not has_linear_algebra_backend("Epetra"):
-    info("DOLFIN has not been configured with Trilinos or PETSc. Exiting.")
+# Test for PETSc
+if not has_linear_algebra_backend("PETSc"):
+    info("DOLFIN has not been configured with PETSc. Exiting.")
     exit()
 
-if not has_krylov_solver_preconditioner("amg"):
-    info("Sorry, this demo is only available when DOLFIN is compiled with AMG "
-	 "preconditioner, Hypre or ML.");
-    exit()
-
-optlist, args = getopt.getopt(sys.argv[1:], 'Ddhve:')
-
+# Set defaults for options.
 verbose = False
-element_pair = 0
+element_pair = 4
 sample_width = None
-direct_solver = False
+
+# Parse commandline options.
+optlist, args = getopt.getopt(sys.argv[1:], 'dhve:')
 for opt in optlist:
   if opt[0] == '-d':
     set_log_level(DEBUG)
-  elif opt[0] == '-D':
-    direct_solver = True
   elif opt[0] == '-h':
     usage()
     sys.exit(0)
@@ -58,6 +49,10 @@ for opt in optlist:
     sample_width = float(opt[1])  
 
 filename = args[-1]
+if not os.path.isfile(filename):
+    raise IOError("No such file: %s"%filename)
+    usage()
+    exit()
 
 try:
   axis = int(filename[:-4].split('_')[-4])
@@ -72,7 +67,7 @@ mesh = Mesh(filename)
 
 n = FacetNormal(mesh)
 
-# Define function spaces 
+# Define function spaces. 
 W = None
 if element_pair == 0:
   # - Taylor-Hood
@@ -108,8 +103,9 @@ boundaries = MeshFunction('size_t', mesh, filename[0:-4] + "_facet_region.xml")
 ds = Measure('ds')[boundaries]
 
 # Boundary conditions
+dP = 1.0
 noslip = Constant((0.0, 0.0, 0.0))
-p_in = Constant(-1.0)
+p_in = Constant(dP)
 p_out = Constant(0.0)
 bcs = []
 for i in range(1, 8):
@@ -123,41 +119,23 @@ for i in range(1, 8):
 # Define variational problem
 (u, p) = TrialFunctions(W)
 (v, q) = TestFunctions(W)
-f = Constant((0.0, 0.0, 0.0))
-a = inner(grad(u), grad(v))*dx + div(v)*p*dx + q*div(u)*dx - (p*dot(v, n)*ds(bc_in) + p*dot(v, n)*ds(bc_out))
-# a = inner(grad(u), grad(v))*dx + div(v)*p*dx + q*div(u)*dx
-L = inner(f, v)*dx
 
-# Form for use in constructing preconditioner matrix
-b = inner(grad(u), grad(v))*dx + p*q*dx
+a = (inner(grad(u), grad(v)) - div(v)*p + q*div(u))*dx # + (p*dot(v, n)*ds(bc_in) + p*dot(v, n)*ds(bc_out))
+A = assemble(a)
 
-# Assemble system
-A, bb = assemble_system(a, L, bcs)
+L = inner(Constant((0.0, 0.0, 0.0)), v)*dx + inner(Constant((dP, 0.0, 0.0)), v)*ds(bc_in) + inner(Constant((0.0, 0.0, 0.0)), v)*ds(bc_out)
+b = assemble(L)
 
-if direct_solver:
-    solver = LUSolver("mumps")
-    # solver = LUSolver("umfpack")
-    solver.set_operator(A)
-else:
-    # Assemble preconditioner system
-    P, btmp = assemble_system(b, L, bcs)
+for bc in bcs:
+    bc.apply(A)
+    bc.apply(b)
 
-    # Create Krylov solver and AMG preconditioner
-    # solver = KrylovSolver("tfqmr", "amg")
-    solver = KrylovSolver("gmres", "amg")
-    solver.parameters['absolute_tolerance'] = 1E-6
-    solver.parameters['relative_tolerance'] = 1E-6
-    solver.parameters['maximum_iterations'] = 100
-    solver.parameters['monitor_convergence'] = True
-    solver.parameters['report'] = True
-    solver.parameters['error_on_nonconvergence'] = False
-
-    # Associate operator (A) and preconditioner matrix (P)
-    solver.set_operators(A, P)
+solver = LUSolver("mumps")
+solver.set_operator(A)
 
 # Solve
 U = Function(W)
-solver.solve(U.vector(), bb)
+solver.solve(U.vector(), b)
 
 # Get sub-functions
 u, p = U.split()
@@ -170,9 +148,9 @@ u, p = U.split()
 flux = [assemble(dot(u, n)*ds(i)) for i in range(1, 8)]
 mean_flux = (-flux[bc_in-1]+flux[bc_out-1])*0.5
 
-bbox = array([MPI.min(mesh.coordinates()[:,0].min()), MPI.max(mesh.coordinates()[:,0].max()),
-              MPI.min(mesh.coordinates()[:,1].min()), MPI.max(mesh.coordinates()[:,1].max()),
-              MPI.min(mesh.coordinates()[:,2].min()), MPI.max(mesh.coordinates()[:,2].max())])
+bbox = array([MPI.min(mesh.mpi_comm(), mesh.coordinates()[:,0].min()), MPI.max(mesh.mpi_comm(), mesh.coordinates()[:,0].max()),
+              MPI.min(mesh.mpi_comm(), mesh.coordinates()[:,1].min()), MPI.max(mesh.mpi_comm(), mesh.coordinates()[:,1].max()),
+              MPI.min(mesh.mpi_comm(), mesh.coordinates()[:,2].min()), MPI.max(mesh.mpi_comm(), mesh.coordinates()[:,2].max())])
 
 L = (bbox[1]-bbox[0] + bbox[3]-bbox[2] + bbox[5]-bbox[4])/3.0
 
@@ -182,7 +160,7 @@ if sample_width:
 
 permability = mean_flux/L
 
-if MPI.process_number() == 0:
+if MPI.rank(mesh.mpi_comm()) == 0:
     print flux
     print """#################################
 ## In-flux = %g
