@@ -109,21 +109,17 @@ p_in = Constant(dP)
 p_out = Constant(0.0)
 bcs = []
 for i in range(1, 8):
-    if i == bc_in: # Inflow
-        bcs.append(DirichletBC(W.sub(1), p_in, boundaries, bc_in))   
-    elif i == bc_out: # Outflow
-        bcs.append(DirichletBC(W.sub(1), p_out, boundaries, bc_out))
-    else:
+    if i != bc_in and i != bc_out:
         bcs.append(DirichletBC(W.sub(0), noslip, boundaries, i))
 
 # Define variational problem
 (u, p) = TrialFunctions(W)
 (v, q) = TestFunctions(W)
 
-a = (inner(grad(u), grad(v)) - div(v)*p + q*div(u))*dx # + (p*dot(v, n)*ds(bc_in) + p*dot(v, n)*ds(bc_out))
+a = (inner(grad(u), grad(v)) - div(v)*p + q*div(u))*dx
 A = assemble(a)
 
-L = inner(Constant((0.0, 0.0, 0.0)), v)*dx + inner(Constant((dP, 0.0, 0.0)), v)*ds(bc_in) + inner(Constant((0.0, 0.0, 0.0)), v)*ds(bc_out)
+L = inner(Constant((0.0, 0.0, 0.0)), v)*dx - p_in*dot(v, n)*ds(bc_in)
 b = assemble(L)
 
 for bc in bcs:
@@ -168,12 +164,9 @@ if MPI.rank(mesh.mpi_comm()) == 0:
 ## Permability = %g
 #################################"""%(flux[bc_in-1], flux[bc_out-1], permability)
 
-# Because the sign of P was flipped
-pflip = project(-p)
-
 # Save solution in VTK format
 ufile_pvd = File("velocity.pvd")
 ufile_pvd << u
 pfile_pvd = File("pressure.pvd")
-pfile_pvd << pflip
+pfile_pvd << p
 

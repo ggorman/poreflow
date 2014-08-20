@@ -87,7 +87,6 @@ fieldsplit_args = [sys.argv[0]] + """
                              --petsc.se_ksp_atol 1.0e-6
 
                              --petsc.se_pc_type fieldsplit
-                             --petsc.se_pc_fieldsplit_detect_saddle_point
                              --petsc.se_pc_fieldsplit_type schur
                              --petsc.se_pc_fieldsplit_schur_factorization_type upper
                              --petsc.se_pc_fieldsplit_schur_Rpreconditioner user
@@ -151,11 +150,7 @@ p_in = Constant(dP)
 p_out = Constant(0.0)
 bcs = []
 for i in range(1, 8):
-    if i == bc_in: # Inflow
-        bcs.append(DirichletBC(Z.sub(1), p_in, boundaries, bc_in))   
-    elif i == bc_out: # Outflow
-        bcs.append(DirichletBC(Z.sub(1), p_out, boundaries, bc_out))
-    else:
+    if i != bc_in and i != bc_out:
         bcs.append(DirichletBC(Z.sub(0), noslip, boundaries, i))
 
 # Define variational problem
@@ -163,7 +158,7 @@ z      = Function(Z)
 (u, p) = split(z)
 (v, q) = TestFunctions(Z)
 
-F = (inner(grad(u), grad(v)) - div(v)*p + q*div(u))*dx + p*dot(v, n)*ds(bc_in) + p*dot(v, n)*ds(bc_out)
+F = (inner(grad(u), grad(v)) - div(v)*p + q*div(u))*dx + p_in*dot(v, n)*ds(bc_in)
 
 # Class for interacting with Newton solver.
 class GeneralProblem(NonlinearProblem):
