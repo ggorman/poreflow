@@ -11,6 +11,10 @@ import getopt
 
 import sys
 
+parameters["form_compiler"]["quadrature_degree"] = 6
+parameters["form_compiler"]["cpp_optimize"] = True
+parameters["form_compiler"]["cpp_optimize_flags"] = "-O3 -ffast-math -march=native"
+
 def usage():
   print sys.argv[0]+""" [options] dolfin_mesh.xml
     options:
@@ -240,7 +244,7 @@ if args != lu_args:
 
   def monitor(snes, its, norm):
     pc = snes.ksp.pc
-    pc.setFieldSplitSchurPrecondition(PETSc.PC.SchurPreType.USER, schur)
+    pc.setFieldSplitSchurPreType(PETSc.PC.SchurPreType.USER, schur)
 
   snes.setMonitor(monitor)
 
