@@ -99,8 +99,8 @@ fieldsplit_args = [sys.argv[0]] + """
                              --petsc.se_fieldsplit_0_pc_type ml
 
                              --petsc.se_fieldsplit_1_ksp_type preonly
-                             --petsc.se_fieldsplit_1_ksp_max_it 1
-                             --petsc.se_fieldsplit_1_pc_type ml
+                             --petsc.se_fieldsplit_1_ksp_max_it 2
+                             --petsc.se_fieldsplit_1_pc_type jacobi
                         """.split()
 
 parameters["std_out_all_processes"] = False
