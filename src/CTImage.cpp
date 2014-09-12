@@ -109,6 +109,11 @@ int CTImage::read_raw_ese_image(const char *name, int slab_size){
     std::cout<<"int read_raw_ese_image(char *name, int slab_size)"<<std::endl;
 
   boost::filesystem::path image_dir(name);  
+  if(!boost::filesystem::is_directory(image_dir)){
+    std::cerr<<"ERROR: no such directory "<<name<<std::endl;
+    exit(-1);
+  }
+
   stem = image_dir.stem();
 
   bool found_metadata=false;
