@@ -135,9 +135,6 @@ int CTImage::read_raw_ese_image(const char *name, int slab_size){
           info>>resolution;
           resolution*=1.0e-6;
         }
-        if(slab_size>dims[0]){
-          std::cerr<<"WARNING: slab_size larger than original image\n";
-        }
       }
       info.close();
     }
@@ -163,9 +160,6 @@ int CTImage::read_raw_ese_image(const char *name, int slab_size){
 
       info.close();
     }
-    if(slab_size>dims[0]){
-      std::cerr<<"WARNING: slab_size larger than original image\n";
-    }
   }
 
   if(!found_metadata){
@@ -177,6 +171,25 @@ int CTImage::read_raw_ese_image(const char *name, int slab_size){
   boost::filesystem::path image_filename = image_dir/std::string(stem.string()+".raw");
 
   image_size = dims[0]*dims[1]*dims[2];
+
+  int file_size = boost::filesystem::file_size(image_filename.string().c_str());
+  if(file_size>image_size){
+    dims[0] = round(pow(file_size, 1.0/3));
+    dims[1] = dims[0];
+    dims[2] = dims[0];
+    image_size = dims[0]*dims[1]*dims[2];
+    if(image_size!=file_size){
+      std::cerr<<"ERROR: Cannot figure out the dimensions of the image. Giving up."<<std::endl;
+      exit(-1);
+    }else{
+      std::cout<<"WARNING: Could not find meta-data. Inferring that the image size is "<<dims[0]<<"^3"<<std::endl;
+    }
+  }
+
+  if(slab_size>dims[0]){
+    std::cerr<<"WARNING: slab_size larger than original image\n";
+  }
+
   raw_image = new unsigned char[image_size];
 
   std::ifstream image_file;
