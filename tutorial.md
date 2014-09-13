@@ -9,7 +9,8 @@ If you are working in AMCG/ESE then do these initial steps on valhalla.ese.ic.ac
 mkdir ~/projects/
 cd projects
 git clone https://github.com/ggorman/poreflow.git
-cd poreflow/src
+cd poreflow
+cmake .
 make
 echo "export PATH=$HOME/projects/poreflow/bin:$PATH" >> .bashrc
 export PATH=$HOME/projects/poreflow/bin:$PATH
