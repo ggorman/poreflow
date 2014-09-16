@@ -139,64 +139,40 @@ int CTImage::read_raw_ese_image(const char *name, int slab_size){
       info.close();
     }
   }
-
-  if(!found_metadata){
-    boost::filesystem::path image_info = image_dir/std::string(stem.string()+".dat");
-    if(boost::filesystem::exists(image_info)){
-      found_metadata=true;
-
-      // Get the metadata.
-      std::ifstream info;
-      info.open(image_info.string().c_str());
-      std::string buffer;
-      info>>buffer;
-      info>>buffer;
-      for(int i=0;i<3;i++)
-        info>>dims[i];
-
-      double l, r;
-      info>>l; info>>r;
-      resolution = (r-l)/dims[0]*1.0e-6;
-
-      info.close();
-    }
-  }
-
-  if(!found_metadata){
-    std::cerr<<"ERROR: Could not find meta-data for CT-Image.";
-    exit(-1);
-  }
-
+  
   // Read image.
   boost::filesystem::path image_filename = image_dir/std::string(stem.string()+".raw");
-
-  image_size = dims[0]*dims[1]*dims[2];
-
   int file_size = boost::filesystem::file_size(image_filename.string().c_str());
-  if(file_size>image_size){
+  
+  if(!found_metadata){
+    std::cout<<"WARNING: Could not find meta-data for CT-Image.";
+    
     dims[0] = round(pow(file_size, 1.0/3));
     dims[1] = dims[0];
     dims[2] = dims[0];
     image_size = dims[0]*dims[1]*dims[2];
+    
+    std::cout<<"INFO: Inferring that the image size is "<<dims[0]<<"^3"<<std::endl
+	     <<"INFO: Setting the resolution to be 1.0. Consider setting the resolution from the command line."<<std::endl;
+    
     if(image_size!=file_size){
-      std::cerr<<"ERROR: Cannot figure out the dimensions of the image. Giving up."<<std::endl;
+      std::cerr<<"ERROR: Inferred image size does not correspond to file size. Giving up."<<std::endl;
       exit(-1);
-    }else{
-      std::cout<<"WARNING: Could not find meta-data. Inferring that the image size is "<<dims[0]<<"^3"<<std::endl;
     }
   }
-
+  
   if(slab_size>dims[0]){
-    std::cerr<<"WARNING: slab_size larger than original image\n";
+    std::cout<<"WARNING: slab_size larger than original image. Resetting slab size.\n";
+    slab_size = -1;
   }
-
+  
   raw_image = new unsigned char[image_size];
-
+  
   std::ifstream image_file;
   image_file.open(image_filename.string().c_str(), std::ios::binary);
   image_file>>raw_image;
   image_file.close();
-
+  
   if(slab_size>0){
     int image_size_new = slab_size*slab_size*slab_size;
     unsigned char *raw_image_new = new unsigned char[image_size_new];
@@ -214,9 +190,6 @@ int CTImage::read_raw_ese_image(const char *name, int slab_size){
 
     image_size = image_size_new;
   }
-
-  for(int i=0;i<image_size;i++)
-    raw_image[i] = (raw_image[i]==0?1:0);
 }
 
 int CTImage::create_hourglass(int size, int throat_width){
@@ -386,6 +359,12 @@ void CTImage::mesh(){
     else if(((dims[2]-1)*resolution-meanz)<dz)
       facet_ids[i] = 6;
   }
+}
+
+void CTImage::set_resolution(double resolution){
+  if(verbose)
+    std::cout<<"void CTImage::set_resolution(double resolution)"<<std::endl;
+  this->resolution = resolution;
 }
 
 void CTImage::trim_channels(int in_boundary, int out_boundary){

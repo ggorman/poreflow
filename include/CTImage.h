@@ -63,7 +63,10 @@ typedef CGAL::Mesh_criteria_3<Tr> Mesh_criteria;
 typedef CGAL::Mesh_constant_domain_field_3<Mesh_domain::R,
                                            Mesh_domain::Index> Sizing_field;
 
+#define BOOST_NO_CXX11_SCOPED_ENUMS
 #include <boost/filesystem.hpp>
+#undef BOOST_NO_CXX11_SCOPED_ENUMS
+
 #include "boost/filesystem/fstream.hpp"
 #include "boost/filesystem/operations.hpp"
 
@@ -82,6 +85,8 @@ public:
   int create_hourglass(int size, int throat_width);
 
   void mesh();
+
+  void set_resolution(double resolution);
 
   void trim_channels(int in_boundary, int out_boundary);
 
