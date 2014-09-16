@@ -49,16 +49,18 @@ void usage(char *cmd){
            <<" -h, --help\n\tHelp! Prints this message.\n"
            <<" -v, --verbose\n\tVerbose output.\n"
 	   <<" -c format, --convert format\n\tConvert image to another format. Options are vox, inr, nrrd.\n"
+           <<" -r resolution, --resolution resolution\n\tSet the image resolution in meters. This is useful when there is no meta-data.\n"
            <<" -s width, --slab width\n\tExtract a square block of size 'width' from the data.\n";
   return;
 }
 
 int parse_arguments(int argc, char **argv,
-                    std::string &filename, bool &verbose, std::string &convert, int &slab_width){
+                    std::string &filename, bool &verbose, std::string &convert, int &slab_width, double &resolution){
 
   // Set defaults
   verbose = false;
   slab_width = -1;
+  resolution = -1;
 
   if(argc==1){
     usage(argv[0]);
@@ -66,17 +68,18 @@ int parse_arguments(int argc, char **argv,
   }
 
   struct option longOptions[] = {
-    {"help",    0,                 0, 'h'},
-    {"verbose", 0,                 0, 'v'},
+    {"help", 0, 0, 'h'},
+    {"verbose", 0, 0, 'v'},
     {"convert", optional_argument, 0, 'c'},
-    {"slab",    optional_argument, 0, 's'},
+    {"resolution", optional_argument, 0, 'r'},
+    {"slab", optional_argument, 0, 's'},
     {0, 0, 0, 0}
   };
 
   int optionIndex = 0;
   int verbosity = 0;
   int c;
-  const char *shortopts = "hvc:s:";
+  const char *shortopts = "hvc:r:s:";
 
   // Set opterr to nonzero to make getopt print error messages
   opterr=1;
@@ -95,6 +98,9 @@ int parse_arguments(int argc, char **argv,
     case 'c':
       convert = std::string(optarg);
       break;
+    case 'r':
+      resolution = atof(optarg);
+      break;    
     case 's':
       slab_width = atoi(optarg);
       break;    
@@ -129,15 +135,19 @@ int main(int argc, char **argv){
   std::string filename, convert;
   bool verbose, generate_mesh;
   int slab_width;
+  double resolution;
 
-  parse_arguments(argc, argv, filename, verbose, convert, slab_width);
+  parse_arguments(argc, argv, filename, verbose, convert, slab_width, resolution);
 
   CTImage image;
   if(verbose)
     image.verbose_on();
   
   image.read_raw_ese_image(filename.c_str(), slab_width);
-  
+  if(resolution>0){
+    image.set_resolution(resolution);
+  }
+
   if(convert==std::string("vox")){
     if(verbose)
       std::cout<<"INFO: Write VOX file\n";
