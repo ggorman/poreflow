@@ -527,6 +527,7 @@ int main(int argc, char **argv){
   if(verbose)
     std::cout<<"INFO: Reading "<<filename<<std::endl;
   read_tarantula_mesh_file(filename, toggle_material, xyz, tets);
+
   if(verbose)
     std::cout<<"INFO: Finished reading "<<filename<<std::endl;
   
@@ -539,6 +540,17 @@ int main(int argc, char **argv){
 
   create_domain(xyz, tets, facets, facet_ids);
   
+  if(tets.empty()){
+    std::cerr<<"ERROR: There is no active region in the mesh. ";
+    if(verbose)
+      std::cerr<<"Check ";
+    else
+      std::cerr<<"Rerun the command with the -v option and check ";
+    std::cerr<<"the file "<<basename+"_original.vtu to confirm there is indeed no connected region going between the two Y-Z planes.";
+
+    return -1;
+  }
+
   if(verbose) 
     std::cout<<"INFO: Active domain created."<<std::endl;
   
