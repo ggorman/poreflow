@@ -20,7 +20,6 @@ def usage():
          2  Crouzeix-Raviart.
          3  p3-DG P1, CD.
          4  MINI (default)
-      -w L  Width of domain.
 """
 
 # Test for PETSc
@@ -31,7 +30,6 @@ if not has_linear_algebra_backend("PETSc"):
 # Set defaults for options.
 verbose = False
 element_pair = 4
-sample_width = None
 
 # Parse commandline options.
 optlist, args = getopt.getopt(sys.argv[1:], 'dhve:')
@@ -45,8 +43,6 @@ for opt in optlist:
     verbose = True
   elif opt[0] == '-e':
     element_pair = int(opt[1])
-  elif opy[0] == '-w':
-    sample_width = float(opt[1])  
 
 filename = args[-1]
 if not os.path.isfile(filename):
@@ -54,14 +50,9 @@ if not os.path.isfile(filename):
     usage()
     exit()
 
-try:
-  axis = int(filename[:-4].split('_')[-4])
-  bc_in = int(filename[:-4].split('_')[-2])
-  bc_out = int(filename[:-4].split('_')[-1])
-except:
-  axis = 0
-  bc_in = 1
-  bc_out = 2
+axis = 0
+bc_in = 1
+bc_out = 2
 
 mesh = Mesh(filename)
 
@@ -149,10 +140,6 @@ bbox = array([MPI.min(mesh.mpi_comm(), mesh.coordinates()[:,0].min()), MPI.max(m
               MPI.min(mesh.mpi_comm(), mesh.coordinates()[:,2].min()), MPI.max(mesh.mpi_comm(), mesh.coordinates()[:,2].max())])
 
 L = (bbox[1]-bbox[0] + bbox[3]-bbox[2] + bbox[5]-bbox[4])/3.0
-
-if sample_width:
-    mean_flux*=(sample_width/L)**3
-    L = sample_width
 
 permability = mean_flux/L
 

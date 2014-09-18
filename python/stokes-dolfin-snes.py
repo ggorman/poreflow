@@ -52,14 +52,9 @@ for opt in optlist:
 
 filename = args[-1]
 
-try:
-  axis = int(filename[:-4].split('_')[-4])
-  bc_in = int(filename[:-4].split('_')[-2])
-  bc_out = int(filename[:-4].split('_')[-1])
-except:
-  axis = 0
-  bc_in = 1
-  bc_out = 2
+axis = 0
+bc_in = 1
+bc_out = 2
 
 lu_args = [sys.argv[0]] + """
                              --petsc.se_snes_monitor
