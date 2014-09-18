@@ -129,8 +129,11 @@ int main(int argc, char **argv){
   CTImage image;
   if(verbose)
     image.verbose_on();
-  
-  image.read_raw_ese_image(filename.c_str(), slab_width);
+
+  if(image.read(filename.c_str(), slab_width)<0){
+    std::cerr<<"ERROR: Failed to read file."<<std::endl;
+    exit(-1);
+  }
   
   if(verbose)
     std::cout<<"INFO: Generate mesh using CGAL.\n";

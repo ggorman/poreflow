@@ -81,7 +81,9 @@ public:
   size_t get_NElements();
   size_t get_NFacets();
 
-  int read_raw_ese_image(const char *name, int slab_size);
+  int read(std::string filename, int slab_size);
+  int read_nhdr(std::string filename, int slab_size);
+  int read_raw(std::string filename, int slab_size);
   int create_hourglass(int size, int throat_width);
 
   void mesh();
@@ -94,7 +96,7 @@ public:
   void write_inr(const char *filename=NULL);
 
   // Write NRRD file.
-  void write_nrrd(const char *filename=NULL);
+  void write_nhdr(const char *filename=NULL);
 
   // Write vox file.
   void write_vox(const char *filename=NULL);
@@ -114,7 +116,7 @@ private:
   double resolution;
   CGAL::Image_3 *image;
   Mesh_domain *domain;
-  boost::filesystem::path stem;
+  std::string basename;
 
   std::vector<double> xyz;
   std::vector<int> tets;

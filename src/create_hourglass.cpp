@@ -47,7 +47,7 @@ void usage(char *cmd){
            <<"\nOptions:\n"
            <<" -h, --help\n\tHelp! Prints this message.\n"
            <<" -v, --verbose\n\tVerbose output.\n"
-	   <<" -c format, --convert format\n\tConvert image to another format. Options are vox, nrrd, inr.\n"
+	   <<" -c format, --convert format\n\tConvert image to another format. Options are vox, nhrd, inr.\n"
            <<" -s width, --slab width\n\tImage width.\n"
            <<" -t width, --throat width\n\tWidth of throat.\n"
            <<" -m, --mesh\n\tGenerate meshing using CGAL\n"
@@ -158,11 +158,11 @@ int main(int argc, char **argv){
       std::cout<<"INFO: Write VOX file\n";
 
     image.write_vox(filename.c_str());
-  }else if(convert==std::string("nrrd")){
+  }else if(convert==std::string("nhdr")){
     if(verbose)
-      std::cout<<"INFO: Write NRRD file\n";
+      std::cout<<"INFO: Write NHDR file\n";
 
-    image.write_nrrd(filename.c_str());
+    image.write_nhdr(filename.c_str());
   }else if(convert==std::string("inr")){
     if(verbose)
       std::cout<<"INFO: Write INR file\n";

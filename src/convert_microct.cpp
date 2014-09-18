@@ -48,7 +48,7 @@ void usage(char *cmd){
            <<"\nOptions:\n"
            <<" -h, --help\n\tHelp! Prints this message.\n"
            <<" -v, --verbose\n\tVerbose output.\n"
-	   <<" -c format, --convert format\n\tConvert image to another format. Options are vox, inr, nrrd.\n"
+	   <<" -c format, --convert format\n\tConvert image to another format. Options are vox, inr, nhdr.\n"
            <<" -r resolution, --resolution resolution\n\tSet the image resolution in meters. This is useful when there is no meta-data.\n"
            <<" -s width, --slab width\n\tExtract a square block of size 'width' from the data.\n";
   return;
@@ -143,7 +143,11 @@ int main(int argc, char **argv){
   if(verbose)
     image.verbose_on();
   
-  image.read_raw_ese_image(filename.c_str(), slab_width);
+  if(image.read(filename.c_str(), slab_width)<0){
+    std::cerr<<"ERROR: Failed to read file."<<std::endl;
+    exit(-1);
+  }
+  
   if(resolution>0){
     image.set_resolution(resolution);
   }
@@ -153,11 +157,11 @@ int main(int argc, char **argv){
       std::cout<<"INFO: Write VOX file\n";
 
     image.write_vox();
-  }else if(convert==std::string("nrrd")){
+  }else if(convert==std::string("nhrd")){
     if(verbose)
-      std::cout<<"INFO: Write NRRD file\n";
+      std::cout<<"INFO: Write NHDR file\n";
 
-    image.write_nrrd();
+    image.write_nhdr();
   }else if(convert==std::string("inr")){
     if(verbose)
       std::cout<<"INFO: Write INR file\n";

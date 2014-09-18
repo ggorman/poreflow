@@ -54,13 +54,14 @@ void usage(char *cmd){
   std::cerr<<"\nUsage: "<<cmd<<" [options ...] [Tarantula mesh file]\n"
            <<"\nOptions:\n"
            <<" -h, --help\n\tHelp! Prints this message.\n"
+           <<" -n, --nhdr\n\nSpecify the NHDR file so that the meta-data can be read.\n"
            <<" -v, --verbose\n\tVerbose output.\n"
            <<" -t, --toggle\n\tToggle the material selection for the mesh.\n";
   return;
 }
 
 int parse_arguments(int argc, char **argv,
-                    std::string &filename, bool &verbose, bool &toggle_material){
+                    std::string &filename, bool &verbose, bool &toggle_material, std::string &nhdr_filename){
 
   // Set defaults
   verbose = false;
@@ -72,7 +73,8 @@ int parse_arguments(int argc, char **argv,
   }
 
   struct option longOptions[] = {
-    {"help",    0, 0, 'h'},
+    {"help", 0, 0, 'h'},
+    {"nhdr", optional_argument, 0, 'n'},
     {"verbose", 0, 0, 'v'},
     {"toggle",  0, 0, 't'},
     {0, 0, 0, 0}
@@ -81,7 +83,7 @@ int parse_arguments(int argc, char **argv,
   int optionIndex = 0;
   int verbosity = 0;
   int c;
-  const char *shortopts = "hvt";
+  const char *shortopts = "hn:vt";
 
   // Set opterr to nonzero to make getopt print error messages
   opterr=1;
@@ -93,6 +95,9 @@ int parse_arguments(int argc, char **argv,
     switch (c){
     case 'h':
       usage(argv[0]);
+      break;
+    case 'n':
+      nhdr_filename = std::string(optarg);
       break;
     case 'v':
       verbose = true;
@@ -145,9 +150,60 @@ double volume(const double *x0, const double *x1, const double *x2, const double
     return (-x03*(z02*y01 - z01*y02) + x02*(z03*y01 - z01*y03) - x01*(z03*y02 - z02*y03))/6;
   }
 
-int read_tarantula_mesh_file(std::string filename, bool toggle_material,
+int read_tarantula_mesh_file(std::string filename, std::string nhdr_filename,
+			     bool toggle_material,
                              std::vector<double> &xyz,
                              std::vector<int> &tets){
+
+  double resolution = 1.0;
+  
+  // Get meta-data from NHDR file if specified.
+  if(!nhdr_filename.empty()){
+    
+    // Open file.
+    std::ifstream nhdr(nhdr_filename);
+    if(!nhdr.is_open()){
+      std::cerr<<"ERROR: Cannot open NHDR file: "<<nhdr_filename<<std::endl;
+      exit(-1);
+    }
+    
+    // Parse NHDR file
+    std::string line;
+    std::getline(nhdr, line);
+    if(line.compare(0, 8, "NRRD0004")!=0){
+      std::cerr<<"ERROR: Unexpected first line in NHDR file. Expected NRRD0004, got "<<line<<std::endl;
+    }
+    std::map<std::string, std::string> nrrd_dict;
+    while(std::getline(nhdr, line)){
+      // Skip comments.
+      if(line.compare(0, 1, "#")==0){
+	continue;
+      }
+      
+      int delimiter_pos = line.find(":");
+      std::string key = line.substr(0, delimiter_pos);
+
+      int offset = line.substr(delimiter_pos+1).find_first_not_of(" \t");
+      std::string value = line.substr(delimiter_pos+1+offset);
+      
+      if(key=="space directions"){	
+	int loc = value.find("(");
+	int length = value.substr(loc+1).find(",");
+	resolution *= atof(value.substr(loc+1, length).c_str());
+      }else if(key=="space units"){
+	int loc = value.find('"');
+	int length = value.substr(loc+1).find('"');
+	if(value.substr(loc+1, length)=="µm"){
+	  resolution *= 1.0e-6;
+	}else{
+	  std::cerr<<"WARNING: units not handled. Set manually."<<std::endl;
+	}
+      }
+    }
+    nhdr.close();
+  }
+
+  // Read Tarantuala file
   std::ifstream infile;
   infile.open(filename.c_str());
   
@@ -164,6 +220,13 @@ int read_tarantula_mesh_file(std::string filename, bool toggle_material,
     infile>>xyz[i*3];
     infile>>xyz[i*3+1]; 
     infile>>xyz[i*3+2];
+  }
+
+  // Rescale if necessary.
+  if(resolution!=1.0){
+    for(int i=0;i<NNodes*3;i++){
+      xyz[i]*=resolution;
+    }
   }
 
   // throwaway trash
@@ -209,9 +272,9 @@ int read_tarantula_mesh_file(std::string filename, bool toggle_material,
 
   if(materials.size()>1){
     assert(materials.size()==2);
-    size_t select=1;
+    size_t select=0;
     if(toggle_material)
-      select = 0;
+      select = 1;
 
     // Create the mask.
     std::vector<bool> mask(NTetra, false);
@@ -516,18 +579,19 @@ int create_domain(std::vector<double> &xyz,
 }
 
 int main(int argc, char **argv){
-  std::string filename;
+  std::string filename, nhdr_filename;
   bool verbose, toggle_material;
-  parse_arguments(argc, argv, filename, verbose, toggle_material);
+  parse_arguments(argc, argv, filename, verbose, toggle_material, nhdr_filename);
 
-  std::vector<double> xyz;
-  std::vector<int> tets;
   std::string basename = filename.substr(0, filename.size()-4);
   
   if(verbose)
     std::cout<<"INFO: Reading "<<filename<<std::endl;
-  read_tarantula_mesh_file(filename, toggle_material, xyz, tets);
 
+  std::vector<double> xyz;
+  std::vector<int> tets;
+  read_tarantula_mesh_file(filename, nhdr_filename, toggle_material, xyz, tets);
+  
   if(verbose)
     std::cout<<"INFO: Finished reading "<<filename<<std::endl;
   

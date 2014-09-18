@@ -104,61 +104,136 @@ size_t CTImage::get_NFacets(){
   return NFacets;
 }
 
-int CTImage::read_raw_ese_image(const char *name, int slab_size){
+int CTImage::read(std::string filename, int slab_size){
   if(verbose)
-    std::cout<<"int read_raw_ese_image(char *name, int slab_size)"<<std::endl;
-
-  boost::filesystem::path image_dir(name);  
-  if(!boost::filesystem::is_directory(image_dir)){
-    std::cerr<<"ERROR: no such directory "<<name<<std::endl;
-    exit(-1);
+    std::cout<<"int CTImage::read(std::string filename, int slab_size)"<<std::endl;
+  
+  if(filename.substr(filename.size()-4).compare(".raw")==0){
+    return read_raw(filename.c_str(), slab_size);
+  }else if(filename.substr(filename.size()-5).compare(".nhdr")==0){
+    return read_nhdr(filename.c_str(), slab_size);
+  }else{
+    std::cerr<<"ERROR: file extension not recognised. Expecting either .nhdr or .raw\n";
+    return -1;
   }
+}
 
-  stem = image_dir.stem();
+int CTImage::read_nhdr(std::string filename, int slab_size){
+  if(verbose)
+    std::cout<<"int read_nhdr(std::string filename, int slab_size)"<<std::endl;
 
-  bool found_metadata=false;
-  {
-    boost::filesystem::path image_info = image_dir/std::string(stem.string()+"_info.txt");
-    if(boost::filesystem::exists(image_info)){
-      found_metadata=true;
+  // Note basename
+  basename = filename.substr(0, filename.size()-4);
 
-      // Get the metadata.
-      std::ifstream info;
-      info.open(image_info.string().c_str());
-      while(!info.eof()){
-        std::string buffer;
-        info>>buffer;
-        if(buffer==std::string("Size:")){
-          for(int i=0;i<3;i++)
-            info>>dims[i];
-        }else if(buffer==std::string("Resolution:")){
-          info>>resolution;
-          resolution*=1.0e-6;
-        }
-      }
-      info.close();
+  // Open file.
+  std::ifstream nhdr(filename);
+  if(!nhdr.is_open()){
+    std::cerr<<"ERROR: Cannot open NHDR file: "<<filename<<std::endl;
+  }
+  
+  // Parse NHDR file
+  std::string line;
+  std::getline(nhdr, line);
+  if(line.compare(0, 8, "NRRD0004")!=0){
+    std::cerr<<"ERROR: Unexpected first line in NHDR file. Expected NRRD0004, got "<<line<<std::endl;
+  }
+  std::map<std::string, std::string> nrrd_dict;
+  while(std::getline(nhdr, line)){
+    // Skip comments.
+    if(line.compare(0, 1, "#")==0){
+      continue;
     }
-  }
-  
-  // Read image.
-  boost::filesystem::path image_filename = image_dir/std::string(stem.string()+".raw");
-  int file_size = boost::filesystem::file_size(image_filename.string().c_str());
-  
-  if(!found_metadata){
-    std::cout<<"WARNING: Could not find meta-data for CT-Image.";
+
+    int delimiter_pos = line.find(":");
+    std::string key = line.substr(0, delimiter_pos);
     
-    dims[0] = round(pow(file_size, 1.0/3));
+    int offset = line.substr(delimiter_pos+1).find_first_not_of(" \t");
+    std::string value = line.substr(delimiter_pos+1+offset);
+    value = value.substr(0, value.find_last_not_of(" \t"));
+    nrrd_dict[key] = value;
+  }
+
+  std::string filename_raw;
+  double units=1.0;
+  for(std::map<std::string, std::string>::const_iterator it=nrrd_dict.begin(); it!=nrrd_dict.end();++it){
+    if(it->first=="data file"){
+      // Add a path if necessary.
+      int slash = filename.find_last_of("/\\");
+      if(slash!=std::string::npos){
+	// filename_raw = filename.substr(0, slash+1)+it->second.substr(0, it->second.find_last_not_of(" "));
+	filename_raw = filename.substr(0, slash+1)+it->second;
+      }else{
+	filename_raw = it->second;
+      }
+    }else if(it->first=="dimension"){
+      if(atoi(it->second.c_str())!=3){
+	std::cerr<<"ERROR: Expected dimension 3, but got ->"<<it->second<<"<-"<<atoi(it->second.c_str())<<std::endl;
+	return -1;
+      }
+    }else if(it->first=="encoding"){
+      if(it->second!="raw"){
+	std::cerr<<"ERROR: Expected raw encoding, but got ->"<<it->second<<"<-"<<std::endl;
+	return -1;
+      }
+    }else if(it->first=="endian"){
+      if(it->second!="little"){
+	std::cerr<<"ERROR: Expected little endian, but got ->"<<it->second<<"<-"<<std::endl;
+	return -1;
+      }
+    }else if(it->first=="type"){
+      if(it->second!="uchar"){
+	std::cerr<<"ERROR: Expected date dype of image data to be uchar, but got ->"<<it->second<<"<-"<<std::endl;
+	return -1;
+      }
+    }else if(it->first=="sizes"){
+      int loc = it->second.find(" ");
+      dims[0] = atoi(it->second.substr(0, loc).c_str());
+      
+      // Going to assume for now all the dimensions are the same as I do not have a use case where this is otherwise.
+      dims[1] = dims[0];
+      dims[2] = dims[0];
+    }else if(it->first=="space directions"){
+      int loc = it->second.find("(");
+      int length = it->second.substr(loc+1).find(",");
+      resolution = atof(it->second.substr(loc+1, length).c_str());
+    }else if(it->first=="space units"){
+      int loc = it->second.find('"');
+      int length = it->second.substr(loc+1).find('"');
+      if(it->second.substr(loc+1, length)=="µm"){
+	units = 1.0e-6;
+      }else{
+	std::cerr<<"WARNING: units not handled. Set manually."<<std::endl;
+      }
+    }
+    //else{
+    //  std::cout<<"OUTSTANDING: key, value ->"<<it->first<<"<- :: ->"<<it->second<<std::endl;
+    //}
+  }
+  resolution*=units;
+
+  return read_raw(filename_raw, slab_size);
+}
+
+int CTImage::read_raw(std::string filename, int slab_size){
+  if(verbose)
+    std::cout<<"int read_raw(std::string filename, int slab_size)"<<std::endl;
+
+  // Note basename
+  basename = filename.substr(0, filename.size()-4);
+  
+  // Establish the size of the image.
+  int file_size = boost::filesystem::file_size(filename);
+
+  if(dims[0]==-1){
+    dims[0] = round(pow(file_size, 1.0/3.0));
     dims[1] = dims[0];
     dims[2] = dims[0];
-    image_size = dims[0]*dims[1]*dims[2];
-    
-    std::cout<<"INFO: Inferring that the image size is "<<dims[0]<<"^3"<<std::endl
-	     <<"INFO: Setting the resolution to be 1.0. Consider setting the resolution from the command line."<<std::endl;
-    
-    if(image_size!=file_size){
-      std::cerr<<"ERROR: Inferred image size does not correspond to file size. Giving up."<<std::endl;
-      exit(-1);
-    }
+  }
+  image_size = dims[0]*dims[1]*dims[2];
+  
+  if(image_size!=file_size){
+    std::cerr<<"ERROR: raw image corrupted."<<std::endl;
+    return -1;
   }
   
   if(slab_size>dims[0]){
@@ -169,7 +244,7 @@ int CTImage::read_raw_ese_image(const char *name, int slab_size){
   raw_image = new unsigned char[image_size];
   
   std::ifstream image_file;
-  image_file.open(image_filename.string().c_str(), std::ios::binary);
+  image_file.open(filename, std::ios::binary);
   image_file>>raw_image;
   image_file.close();
   
@@ -190,6 +265,11 @@ int CTImage::read_raw_ese_image(const char *name, int slab_size){
 
     image_size = image_size_new;
   }
+  
+  for(int i=0;i<image_size;i++)
+    raw_image[i] = raw_image[i]?0:1;
+
+  return image_size;
 }
 
 int CTImage::create_hourglass(int size, int throat_width){
@@ -586,19 +666,19 @@ void CTImage::write_inr(const char *filename){
     std::cout<<"void write_inr()"<<std::endl;
 
   if(filename==NULL)
-    _writeImage(image->image(), std::string(stem.string()+".inr").c_str()); 
+    _writeImage(image->image(), std::string(basename+".inr").c_str()); 
   else
     _writeImage(image->image(), filename);
 }
 
-// Write NRRD file.
-void CTImage::write_nrrd(const char *filename){
+// Write NHDR file.
+void CTImage::write_nhdr(const char *filename){
   if(verbose)
     std::cout<<"void write_nrrd()"<<std::endl;
 
   std::ofstream file;
   if(filename==NULL)
-    file.open(std::string(stem.string()+".nrrd").c_str());
+    file.open(std::string(basename+".nhdr").c_str());
   else
     file.open(filename);
 
@@ -606,7 +686,7 @@ void CTImage::write_nrrd(const char *filename){
     <<"# Complete NRRD file format specification at:"<<std::endl
     <<"# http://teem.sourceforge.net/nrrd/format.html"<<std::endl
     <<"Content: Micro-CT scan of rock sample"<<std::endl
-    <<"type: unsigned char"<<std::endl
+    <<"type: uchar"<<std::endl
     <<"dimension: 3"<<std::endl
     <<"space: 3D-right-handed"<<std::endl
     <<"sizes: "<<dims[0]<<" "<<dims[1]<<" "<<dims[2]<<std::endl
@@ -618,11 +698,11 @@ void CTImage::write_nrrd(const char *filename){
     <<"encoding: raw"<<std::endl
     <<"space origin: (0,0,0)"<<std::endl
     <<"measurement frame: (1,0,0) (0,1,0) (0,0,1)"<<std::endl
-    <<"data file: "<<stem.string()+".raw"<<std::endl;
+    <<"data file: "<<basename+".raw"<<std::endl;
   file.close();
 
   std::ofstream image_file;
-  image_file.open(std::string(stem.string()+".raw").c_str(), std::ios::binary);
+  image_file.open(std::string(basename+".raw").c_str(), std::ios::binary);
   image_file.write((const char *)raw_image, image_size);
   image_file.close();
 }
@@ -634,7 +714,7 @@ void CTImage::write_vox(const char *filename){
 
   std::ofstream file;
   if(filename==NULL)
-    file.open(std::string(stem.string()+".vox").c_str());
+    file.open(std::string(basename+".vox").c_str());
   else
     file.open(filename);
   file<<dims[0]<<" "<<dims[1]<<" "<<dims[2]<<std::endl;
@@ -674,7 +754,7 @@ void CTImage::write_vtu(const char *filename){
 
   vtkXMLUnstructuredGridWriter *tet_writer = vtkXMLUnstructuredGridWriter::New();
   if(filename==NULL)
-    tet_writer->SetFileName(std::string(stem.string()+".vtu").c_str());
+    tet_writer->SetFileName(std::string(basename+".vtu").c_str());
   else
     tet_writer->SetFileName(filename);
   tet_writer->SetInput(ug_tets);
@@ -709,7 +789,7 @@ void CTImage::write_vtu(const char *filename){
 
   vtkXMLUnstructuredGridWriter *tri_writer = vtkXMLUnstructuredGridWriter::New();
   if(filename==NULL)
-    tri_writer->SetFileName(std::string(stem.string()+"_facets.vtu").c_str());
+    tri_writer->SetFileName(std::string(basename+"_facets.vtu").c_str());
   else
     tri_writer->SetFileName((std::string(filename, strlen(filename)-4)+"_facets.vtu").c_str());
   tri_writer->SetInput(ug_tris);
@@ -729,7 +809,7 @@ int CTImage::write_gmsh(const char *filename){
 
   ofstream file;
   if(filename==NULL)
-    file.open(std::string(stem.string()+".msh").c_str());
+    file.open(std::string(basename+".msh").c_str());
   else
     file.open(filename);
 
