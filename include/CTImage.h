@@ -77,6 +77,7 @@ public:
 
   void verbose_on();
 
+  double get_porosity();
   size_t get_NNodes();
   size_t get_NElements();
   size_t get_NFacets();

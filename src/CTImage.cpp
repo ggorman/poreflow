@@ -83,6 +83,16 @@ void CTImage::verbose_on(){
   verbose = true;
 }
 
+double CTImage::get_porosity(){
+  int cnt=0;
+  for(int i=0;i<image_size;i++){
+    if(raw_image[i])
+      cnt++;
+  }
+  
+  return (double)cnt/image_size;
+}
+
 size_t CTImage::get_NNodes(){
   size_t NNodes = xyz.size()/3;
   if(verbose)

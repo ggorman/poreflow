@@ -147,7 +147,8 @@ int main(int argc, char **argv){
     std::cerr<<"ERROR: Failed to read file."<<std::endl;
     exit(-1);
   }
-  
+  std::cout<<"INFO: Porosity of sample "<<image.get_porosity()<<std::endl;
+
   if(resolution>0){
     image.set_resolution(resolution);
   }
