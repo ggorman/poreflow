@@ -66,7 +66,7 @@ lu_args = [sys.argv[0]] + """
                              --petsc.se_snes_converged_reason
                              --petsc.se_snes_stol 0.0
                              --petsc.se_snes_atol 1.0e-9
-                             --petsc.se_snes_rtol 1.0e-9
+                             --petsc.se_snes_rtol 1.0e-20
                              --petsc.se_snes_max_it 200
                              --petsc.se_ksp_type preonly
                              --petsc.se_pc_type lu
@@ -77,24 +77,28 @@ fieldsplit_args = [sys.argv[0]] + """
                              --petsc.se_snes_monitor
                              --petsc.se_snes_max_it 30
                              --petsc.se_snes_converged_reason
-                             --petsc.se_snes_rtol 1.0e-7
-                             --petsc.se_snes_atol 1.0e-7
+                             --petsc.se_snes_rtol 1.0e-5
+                             --petsc.se_snes_atol 1.0e-16
+                             --petsc.se_snes_divtol 1.0e6
 
                              --petsc.se_ksp_converged_reason
                              --petsc.se_ksp_type bcgs
                              --petsc.se_ksp_monitor_true_residual
-                             --petsc.se_ksp_rtol 1.0e-6
-                             --petsc.se_ksp_atol 1.0e-6
+                             --petsc.se_ksp_rtol 1.0e-5
+                             --petsc.se_ksp_atol 1.0e-16
+                             --petsc.se_ksp_divtol 1.0e6
 
                              --petsc.se_pc_type fieldsplit
                              --petsc.se_pc_fieldsplit_type schur
                              --petsc.se_pc_fieldsplit_schur_factorization_type upper
-                             --petsc.se_pc_fieldsplit_schur_Rpreconditioner user
 
                              --petsc.se_fieldsplit_0_ksp_type preonly
-                             --petsc.se_fieldsplit_0_pc_type gamg
+                             --petsc.se_fieldsplit_0_ksp_max_it 1
+                             --petsc.se_fieldsplit_0_pc_type hypre
+                             --petsc.se_fieldsplit_0_pc_hypre_type boomeramg
 
                              --petsc.se_fieldsplit_1_ksp_type preonly
+                             --petsc.se_fieldsplit_1_ksp_max_it 1
                              --petsc.se_fieldsplit_1_pc_type jacobi
                         """.split()
 
@@ -235,7 +239,6 @@ if args != lu_args:
   (v, q) = TestFunctions(Z)
 
   schur_D = assemble(inner(p, q)*dx)
-  [bc.apply(schur_D) for bc in bcs]
   schur = extract_sub_matrix(schur_D, 1, 1)
 
   def monitor(snes, its, norm):
@@ -275,8 +278,8 @@ if MPI.rank(mesh.mpi_comm()) == 0:
     print """#################################
 ## In-flux = %g
 ## Out-flux = %g
-## Permability = %g
-#################################"""%(flux[bc_in-1], flux[bc_out-1], permability)
+## Permability = %g m^2 (%g D)
+#################################"""%(flux[bc_in-1], flux[bc_out-1], permability, permability*1e12)
 
 # Save solution in VTK format
 ufile_pvd = File("velocity.pvd")
