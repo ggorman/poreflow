@@ -114,21 +114,21 @@ size_t CTImage::get_NFacets(){
   return NFacets;
 }
 
-int CTImage::read(std::string filename, int slab_size){
+int CTImage::read(std::string filename, const int offsets[], int slab_size){
   if(verbose)
     std::cout<<"int CTImage::read(std::string filename, int slab_size)"<<std::endl;
   
   if(filename.substr(filename.size()-4).compare(".raw")==0){
-    return read_raw(filename.c_str(), slab_size);
+    return read_raw(filename.c_str(), offsets, slab_size);
   }else if(filename.substr(filename.size()-5).compare(".nhdr")==0){
-    return read_nhdr(filename.c_str(), slab_size);
+    return read_nhdr(filename.c_str(), offsets, slab_size);
   }else{
     std::cerr<<"ERROR: file extension not recognised. Expecting either .nhdr or .raw\n";
     return -1;
   }
 }
 
-int CTImage::read_nhdr(std::string filename, int slab_size){
+int CTImage::read_nhdr(std::string filename, const int offsets[], int slab_size){
   if(verbose)
     std::cout<<"int read_nhdr(std::string filename, int slab_size)"<<std::endl;
 
@@ -221,10 +221,10 @@ int CTImage::read_nhdr(std::string filename, int slab_size){
   }
   resolution*=units;
 
-  return read_raw(filename_raw, slab_size);
+  return read_raw(filename_raw, offsets, slab_size);
 }
 
-int CTImage::read_raw(std::string filename, int slab_size){
+int CTImage::read_raw(std::string filename, const int offsets[], int slab_size){
   if(verbose)
     std::cout<<"int read_raw(std::string filename, int slab_size)"<<std::endl;
 
@@ -246,11 +246,13 @@ int CTImage::read_raw(std::string filename, int slab_size){
     return -1;
   }
   
-  if(slab_size>dims[0]){
-    std::cout<<"WARNING: slab_size larger than original image. Resetting slab size.\n";
-    slab_size = -1;
+  for(int i=0;i<3;i++){
+    if((slab_size+offsets[i])>dims[i]){
+      std::cerr<<"ERROR: slab_size larger than original image.\n";
+      exit(-1);
+    }
   }
-  
+
   raw_image = new unsigned char[image_size];
   
   std::ifstream image_file;
@@ -259,13 +261,14 @@ int CTImage::read_raw(std::string filename, int slab_size){
   image_file.close();
   
   if(slab_size>0){
+    int slab_size2 = slab_size*slab_size;
     int image_size_new = slab_size*slab_size*slab_size;
     unsigned char *raw_image_new = new unsigned char[image_size_new];
-    int slice_size_new = slab_size*slab_size;
-    int slice_size = dims[0]*dims[0];
-    for(int i=0;i<slab_size;i++){
+    for(int k=0;k<slab_size;k++){
       for(int j=0;j<slab_size;j++){
-	memcpy(raw_image_new+i*slice_size_new+j*slab_size, raw_image+i*slice_size+j*dims[0], slab_size);
+	for(int i=0;i<slab_size;i++){
+	  raw_image_new[k*slab_size2 + j*slab_size + i] = raw_image[(k+offsets[2])*slab_size2 + (j+offsets[1])*slab_size + i+offsets[0]];
+	}
       }
     }
     delete [] raw_image;

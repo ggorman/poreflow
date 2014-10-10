@@ -123,14 +123,14 @@ int main(int argc, char **argv){
   std::string filename;
   bool verbose;
   int slab_width;
-
+  int offsets[] = {0,0,0};
   parse_arguments(argc, argv, filename, verbose, slab_width);
 
   CTImage image;
   if(verbose)
     image.verbose_on();
 
-  if(image.read(filename.c_str(), slab_width)<0){
+  if(image.read(filename.c_str(), offsets, slab_width)<0){
     std::cerr<<"ERROR: Failed to read file."<<std::endl;
     exit(-1);
   }

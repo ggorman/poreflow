@@ -50,17 +50,22 @@ void usage(char *cmd){
            <<" -v, --verbose\n\tVerbose output.\n"
 	   <<" -c format, --convert format\n\tConvert image to another format. Options are vox, inr, nhdr.\n"
            <<" -r resolution, --resolution resolution\n\tSet the image resolution in meters. This is useful when there is no meta-data.\n"
+           <<" -x offset, --xoffset offset\n\tSpecify the offset along the x-axis when extracting a sub-block.\n"
+           <<" -y offset, --yoffset offset\n\tSpecify the offset along the y-axis when extracting a sub-block.\n"
+           <<" -z offset, --zoffset offset\n\tSpecify the offset along the z-axis when extracting a sub-block.\n"
            <<" -s width, --slab width\n\tExtract a square block of size 'width' from the data.\n";
   return;
 }
 
 int parse_arguments(int argc, char **argv,
-                    std::string &filename, bool &verbose, std::string &convert, int &slab_width, double &resolution){
+                    std::string &filename, bool &verbose, std::string &convert, int offsets[], int &slab_width, double &resolution){
 
   // Set defaults
   verbose = false;
   slab_width = -1;
   resolution = -1;
+  for(int i=0;i<3;i++)
+    offsets[i] = 0;
 
   if(argc==1){
     usage(argv[0]);
@@ -72,6 +77,9 @@ int parse_arguments(int argc, char **argv,
     {"verbose", 0, 0, 'v'},
     {"convert", optional_argument, 0, 'c'},
     {"resolution", optional_argument, 0, 'r'},
+    {"xoffset", optional_argument, 0, 'x'},
+    {"yoffset", optional_argument, 0, 'y'},
+    {"zoffset", optional_argument, 0, 'z'},
     {"slab", optional_argument, 0, 's'},
     {0, 0, 0, 0}
   };
@@ -79,7 +87,7 @@ int parse_arguments(int argc, char **argv,
   int optionIndex = 0;
   int verbosity = 0;
   int c;
-  const char *shortopts = "hvc:r:s:";
+  const char *shortopts = "hvc:r:s:x:y:z:";
 
   // Set opterr to nonzero to make getopt print error messages
   opterr=1;
@@ -100,10 +108,19 @@ int parse_arguments(int argc, char **argv,
       break;
     case 'r':
       resolution = atof(optarg);
-      break;    
+      break;
+    case 'x':
+      offsets[0] = atoi(optarg);
+      break;
+    case 'y':
+      offsets[1] = atoi(optarg);
+      break;
+    case 'z':
+      offsets[2] = atoi(optarg);
+      break;
     case 's':
       slab_width = atoi(optarg);
-      break;    
+      break;
     case '?':
       // missing argument only returns ':' if the option string starts with ':'
       // but this seems to stop the printing of error messages by getopt?
@@ -134,16 +151,16 @@ int main(int argc, char **argv){
     
   std::string filename, convert;
   bool verbose, generate_mesh;
-  int slab_width;
+  int offsets[3], slab_width;
   double resolution;
 
-  parse_arguments(argc, argv, filename, verbose, convert, slab_width, resolution);
+  parse_arguments(argc, argv, filename, verbose, convert, offsets, slab_width, resolution);
 
   CTImage image;
   if(verbose)
     image.verbose_on();
   
-  if(image.read(filename.c_str(), slab_width)<0){
+  if(image.read(filename.c_str(), offsets, slab_width)<0){
     std::cerr<<"ERROR: Failed to read file."<<std::endl;
     exit(-1);
   }

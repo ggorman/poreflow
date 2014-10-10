@@ -82,9 +82,9 @@ public:
   size_t get_NElements();
   size_t get_NFacets();
 
-  int read(std::string filename, int slab_size);
-  int read_nhdr(std::string filename, int slab_size);
-  int read_raw(std::string filename, int slab_size);
+  int read(std::string filename, const int offsets[], int slab_size);
+  int read_nhdr(std::string filename, const int offsets[], int slab_size);
+  int read_raw(std::string filename, const int offsets[], int slab_size);
   int create_hourglass(int size, int throat_width);
 
   void mesh();
