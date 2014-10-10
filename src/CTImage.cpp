@@ -139,6 +139,7 @@ int CTImage::read_nhdr(std::string filename, const int offsets[], int slab_size)
   std::ifstream nhdr(filename);
   if(!nhdr.is_open()){
     std::cerr<<"ERROR: Cannot open NHDR file: "<<filename<<std::endl;
+    exit(-1);
   }
   
   // Parse NHDR file
