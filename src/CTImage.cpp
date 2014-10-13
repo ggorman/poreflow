@@ -262,13 +262,14 @@ int CTImage::read_raw(std::string filename, const int offsets[], int slab_size){
   image_file.close();
   
   if(slab_size>0){
+    int dim2 = dims[2]*dims[1];
     int slab_size2 = slab_size*slab_size;
     int image_size_new = slab_size*slab_size*slab_size;
     unsigned char *raw_image_new = new unsigned char[image_size_new];
     for(int k=0;k<slab_size;k++){
       for(int j=0;j<slab_size;j++){
 	for(int i=0;i<slab_size;i++){
-	  raw_image_new[k*slab_size2 + j*slab_size + i] = raw_image[(k+offsets[2])*slab_size2 + (j+offsets[1])*slab_size + i+offsets[0]];
+	  raw_image_new[k*slab_size2 + j*slab_size + i] = raw_image[(k+offsets[2])*dim2 + (j+offsets[1])*dims[1] + i+offsets[0]];
 	}
       }
     }
