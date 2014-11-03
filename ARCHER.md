@@ -8,7 +8,7 @@ If you have not already done so then read the [basic tutorial]{https://github.co
 I recommend appending these lines to your ~/.bashrc file if they are not already there:
 ```bash
 export MODULEPATH=$PWD/modules:/work/e319/shared/modules:$MODULEPATH
-export WORK=/work/n02/n02/$USER/ # This path will vary depending on what project you are on. The important part is that you are operating from /work and not /home.
+export WORK=/work/n01/n01/$USER/ # This path will vary depending on what project you are on. The important part is that you are operating from /work and not /home.
 
 export PACKAGE_VERSION="dev"
 export INSTANT_CACHE_DIR=$WORK/.instant
@@ -31,10 +31,8 @@ This should already have been completed following the instructions from the [bas
 
 Running a simulation
 --------------------
-When using ARCHER (or indeed any cluster/supercomputer) you typically do not run interactively like on a workstation. Instead you use a batch queuing system - such as PBS in this case. Here is an example PBS file for submitting a job to the queue.
-```bash
-cat > mysimulation.pbs << EOF
-#
+When using ARCHER (or indeed any cluster/supercomputer) you typically do not run interactively like on a workstation. Instead you use a batch queuing system - such as PBS in this case. Here is an example PBS file for submitting a job to the queue - cut and paste from here into an editor on ARCHER.
+```
 # Parallel script produced by bolt
 #        Resource: ARCHER (Cray XC30 (24-core per node))
 #    Batch system: PBSPro_select
@@ -63,7 +61,8 @@ module switch gcc gcc/4.9.0
 # -d number of cpu's per pe
 # In general you just want to specify -l select=x to specify the number of compute nodes you want, and then update the -n option on the next line to 24*number_of_nodes. You can leave the other options as they are.
 aprun -n 96 -N 24 -S 12 -d 1 python $WORK/projects/poreflow/stokes-dolfin-snes.py Berea.xml
-EOF
+```
+
 To submit this "job" to the queue execute the command:
 ```bash
 qsub mysimulation.pbs
@@ -76,7 +75,7 @@ If you do not get anything back that means that your job has completed. At this 
 ```bash
 ls -ltr
 ```
-You will see files of the pattern pore.o* and pore.e* which are the standard output and standard error of your job respectively. 
+You will see files of the pattern pore.o... and pore.e... which are the standard output and standard error of your job respectively. 
 
 Possible problems
 -----------------
