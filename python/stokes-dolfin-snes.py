@@ -14,6 +14,7 @@ import sys
 def usage():
   print sys.argv[0]+""" [options] dolfin_mesh.xml
     options:
+      -a [xyz] Specifies the axis along which to apply the pressure gradient. By default it is applied along the x-axis.
       -h    Prints this help message.
       -d    Enable debugging mode.
       -v    Enable verbose mode.
@@ -31,14 +32,17 @@ if not has_linear_algebra_backend("PETSc"):
     info("DOLFIN has not been configured with PETSc. Exiting.")
     exit()
 
-optlist, args = getopt.getopt(sys.argv[1:], 'dhve:')
+optlist, args = getopt.getopt(sys.argv[1:], 'a:dhve:')
 
 verbose = False
 element_pair = 4
 sample_width = None
 direct_solver = False
+axis = "x"
 for opt in optlist:
-  if opt[0] == '-d':
+  if opy[0] == '-a':
+    axis = opt[1]  
+  elif opt[0] == '-d':
     set_log_level(DEBUG)
   elif opt[0] == '-h':
     usage()
@@ -52,9 +56,20 @@ for opt in optlist:
 
 filename = args[-1]
 
-axis = 0
-bc_in = 1
-bc_out = 2
+if axis == "x":
+  axis = 0
+  bc_in = 1
+  bc_out = 2
+elif axis == "y":
+  axis = 1
+  bc_in = 3
+  bc_out = 4
+elif axis == "z":
+  axis = 2
+  bc_in = 5
+  bc_out = 6
+else:
+  raise ValueError("Invalid argument for -a option")
 
 lu_args = [sys.argv[0]] + """
                              --petsc.se_snes_monitor
