@@ -74,7 +74,7 @@ int parse_arguments(int argc, char **argv,
 		    bool &verbose,
 		    bool &toggle_material,
 		    std::string &nhdr_filename,
-		    int axis){
+		    int &axis){
 
   // Set defaults
   verbose = false;
