@@ -40,7 +40,7 @@ sample_width = None
 direct_solver = False
 axis = "x"
 for opt in optlist:
-  if opy[0] == '-a':
+  if opt[0] == '-a':
     axis = opt[1]  
   elif opt[0] == '-d':
     set_log_level(DEBUG)
@@ -51,7 +51,7 @@ for opt in optlist:
     verbose = True
   elif opt[0] == '-e':
     element_pair = int(opt[1])
-  elif opy[0] == '-w':
+  elif opt[0] == '-w':
     sample_width = float(opt[1])  
 
 filename = args[-1]
