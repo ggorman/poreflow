@@ -51,22 +51,36 @@
 #include "writers.h"
 
 void usage(char *cmd){
-  std::cerr<<"\nUsage: "<<cmd<<" [options ...] [Tarantula mesh file]\n"
-           <<"\nOptions:\n"
+  std::cerr<<
+    "Converts the Tarantula generated mesh into a GMSH file. In order to "
+    "avoid having disconnected domains we sweep across adjacent elements "
+    "between two parallel sides of the domain and only keep mesh elements "
+    "that are visited.\n"
+    
+    "Usage: "<<cmd<<" [options ...] [Tarantula mesh file]\n"
+	     <<"\nOptions:\n"
            <<" -h, --help\n\tHelp! Prints this message.\n"
            <<" -n, --nhdr\n\nSpecify the NHDR file so that the meta-data can be read.\n"
            <<" -v, --verbose\n\tVerbose output.\n"
+	   <<" -x, --x\n\tApply sweep align the x-axis (i.e. between the Y-Z parallel planes). This is the default.\n"
+	   <<" -y, --y\n\tApply sweep align the y-axis (i.e. between the X-Z parallel planes).\n"
+	   <<" -z, --z\n\tApply sweep align the z-axis (i.e. between the X-Y parallel planes).\n"
            <<" -t, --toggle\n\tToggle the material selection for the mesh.\n";
   return;
 }
 
 int parse_arguments(int argc, char **argv,
-                    std::string &filename, bool &verbose, bool &toggle_material, std::string &nhdr_filename){
+                    std::string &filename,
+		    bool &verbose,
+		    bool &toggle_material,
+		    std::string &nhdr_filename,
+		    int axis){
 
   // Set defaults
   verbose = false;
   toggle_material = false;
-
+  axis = 0;
+  
   if(argc==1){
     usage(argv[0]);
     exit(0);
@@ -77,13 +91,17 @@ int parse_arguments(int argc, char **argv,
     {"nhdr", optional_argument, 0, 'n'},
     {"verbose", 0, 0, 'v'},
     {"toggle",  0, 0, 't'},
+    {"x",  0, 0, 'x'},
+    {"y",  0, 0, 'y'},
+    {"z",  0, 0, 'z'},
     {0, 0, 0, 0}
   };
 
   int optionIndex = 0;
   int verbosity = 0;
   int c;
-  const char *shortopts = "hn:vt";
+
+  const char *shortopts = "hn:vtxyz";
 
   // Set opterr to nonzero to make getopt print error messages
   opterr=1;
@@ -104,6 +122,15 @@ int parse_arguments(int argc, char **argv,
       break;
     case 't':
       toggle_material = true;
+      break;
+    case 'x':
+      axis = 0;
+      break;
+    case 'y':
+      axis = 1;
+      break;
+    case 'z':
+      axis = 2;
       break;
     case '?':
       // missing argument only returns ':' if the option string starts with ':'
@@ -290,7 +317,8 @@ int read_tarantula_mesh_file(std::string filename, std::string nhdr_filename,
   }
 }
 
-int create_domain(std::vector<double> &xyz,
+int create_domain(int axis,
+		  std::vector<double> &xyz,
                   std::vector<int> &tets, 
                   std::vector<int> &facets,
                   std::vector<int> &facet_ids){
@@ -429,13 +457,13 @@ int create_domain(std::vector<double> &xyz,
       
       if(is_facet){
 	// Decide boundary id.
-	double mean_x = (xyz[facet[0]*3]+
-			 xyz[facet[1]*3]+
-			 xyz[facet[2]*3])/3.0;
+	double mean_x = (xyz[facet[0]*3+axis]+
+			 xyz[facet[1]*3+axis]+
+			 xyz[facet[2]*3+axis])/3.0;
 	
-	if(fabs(mean_x-bbox[0])<eta){
+	if(fabs(mean_x-bbox[axis*2])<eta){
 	  front0.insert(front0.end(), i);
-	}else if(fabs(mean_x-bbox[1])<eta){
+	}else if(fabs(mean_x-bbox[axis*2+1])<eta){
 	  front1.insert(front1.end(), i);
 	}
       }
@@ -581,7 +609,8 @@ int create_domain(std::vector<double> &xyz,
 int main(int argc, char **argv){
   std::string filename, nhdr_filename;
   bool verbose, toggle_material;
-  parse_arguments(argc, argv, filename, verbose, toggle_material, nhdr_filename);
+  int axis = 0;
+  parse_arguments(argc, argv, filename, verbose, toggle_material, nhdr_filename, axis);
 
   std::string basename = filename.substr(0, filename.size()-4);
   
@@ -602,7 +631,7 @@ int main(int argc, char **argv){
     write_vtk_file(basename+"_original", xyz, tets, facets, facet_ids);
   }  
 
-  create_domain(xyz, tets, facets, facet_ids);
+  create_domain(axis, xyz, tets, facets, facet_ids);
   
   if(tets.empty()){
     std::cerr<<"ERROR: There is no active region in the mesh. ";
