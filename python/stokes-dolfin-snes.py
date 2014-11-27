@@ -97,6 +97,7 @@ fieldsplit_args = [sys.argv[0]] + """
                              --petsc.se_ksp_rtol 1.0e-5
                              --petsc.se_ksp_atol 1.0e-16
                              --petsc.se_ksp_divtol 1.0e6
+                             --petsc.se_ksp_max_it 1000
 
                              --petsc.se_pc_type fieldsplit
                              --petsc.se_pc_fieldsplit_type schur
