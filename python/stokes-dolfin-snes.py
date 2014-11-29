@@ -198,7 +198,8 @@ solver  = PETScSNESSolver()
 solver.parameters["relative_tolerance"] = 1e-6
 solver.parameters["report"] = False
 solver.parameters["options_prefix"] = "se"
-
+solver.parameters["error_on_nonconvergence"] = False
+s
 solver.init(problem, z.vector())
 snes = solver.snes()
 snes.setFromOptions()
@@ -260,7 +261,7 @@ if args != lu_args:
 
 snes.solve(None, as_backend_type(z.vector()).vec())
 
-File("solution_stokes.xml.gz") << z
+# File("solution_stokes.xml.gz") << z
 
 (u, p) = z.split()
 
