@@ -97,7 +97,6 @@ fieldsplit_args = [sys.argv[0]] + """
                              --petsc.se_ksp_rtol 1.0e-5
                              --petsc.se_ksp_atol 1.0e-16
                              --petsc.se_ksp_divtol 1.0e6
-                             --petsc.se_ksp_max_it 1000
 
                              --petsc.se_pc_type fieldsplit
                              --petsc.se_pc_fieldsplit_type schur
@@ -294,8 +293,8 @@ if MPI.rank(mesh.mpi_comm()) == 0:
 #################################"""%(flux[bc_in-1], flux[bc_out-1], permability, permability*1e12)
 
 # Save solution in VTK format
-ufile_pvd = File("velocity.pvd")
-ufile_pvd << u
-pfile_pvd = File("pressure.pvd")
-pfile_pvd << p
+# ufile_pvd = File("velocity.pvd")
+# ufile_pvd << u
+# pfile_pvd = File("pressure.pvd")
+# pfile_pvd << p
 
