@@ -51,7 +51,7 @@ void usage(char *cmd){
            <<" -s width, --slab width\n\tImage width.\n"
            <<" -t width, --throat width\n\tWidth of throat.\n"
            <<" -m, --mesh\n\tGenerate meshing using CGAL\n"
-           <<" -o filename, --output filename\n\tName of outfile.\n";
+           <<" -o filename, --output filename\n\tName of outfile -- without the extension.\n";
   return;
 }
 
@@ -150,31 +150,38 @@ int main(int argc, char **argv){
   CTImage image;
   if(verbose)
     image.verbose_on();
-  
+
+  image.set_basename(filename);
+
   image.create_hourglass(slab_width, throat_width);
   
   if(convert==std::string("vox")){
     if(verbose)
-      std::cout<<"INFO: Write VOX file\n";
+      std::cout<<"INFO: Write VOX file - "<<filename<<std::endl;
 
-    image.write_vox(filename.c_str());
+    image.write_vox();
   }else if(convert==std::string("nhdr")){
     if(verbose)
-      std::cout<<"INFO: Write NHDR file\n";
+      std::cout<<"INFO: Write NHDR file - "<<filename<<std::endl;
 
-    image.write_nhdr(filename.c_str());
+    image.write_nhdr();
   }else if(convert==std::string("inr")){
     if(verbose)
-      std::cout<<"INFO: Write INR file\n";
+      std::cout<<"INFO: Write INR file - "<<filename<<std::endl;
 
-    image.write_inr(filename.c_str());
+    image.write_inr();
+  }else{ // Default.
+    if(verbose)
+      std::cout<<"INFO: Write NHDR file - "<<filename<<std::endl;
+    
+    image.write_nhdr();
   }
 
   if(mesh){
     image.mesh();
-    image.write_gmsh(std::string(std::string(filename.c_str(), filename.size()-4)+".msh").c_str());
+    image.write_gmsh();
 
-    image.write_vtu(std::string(std::string(filename.c_str(), filename.size()-4)+".vtu").c_str());
+    image.write_vtu();
   }
 
   return 0;

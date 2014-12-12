@@ -288,24 +288,26 @@ int CTImage::read_raw(std::string filename, const int offsets[], int slab_size){
 }
 
 int CTImage::create_hourglass(int size, int throat_width){
-  image_size = size*size*size;
-  raw_image = new unsigned char[image_size];
   for(int i=0;i<3;i++)
-    dims[i] = size;
-  resolution=1.0/size;
-
-  double dx = 1.0/size;
-  double A = (0.5 - throat_width*0.5*dx)*0.5;
-  double offset = A + (1+throat_width)*dx*0.5;
+    dims[i] = size+2;
+  
+  resolution=1.0/dims[0];  
+  image_size = dims[0]*dims[1]*dims[2];
+  
+  raw_image = new unsigned char[image_size];
+  
+  double midpoint = (dims[0]-1)*0.5;
   double two_pi = 2*3.14159265359;
+  double A = (size-throat_width)*0.25;
   size_t pos = 0;
-  for(size_t i=0;i<size;i++){
-    for(size_t j=0;j<size;j++){
-      for(size_t k=0;k<size;k++){
-        double hourglass = offset + A*cos(k*dx*two_pi);
-        double y = i*dx-0.5;
-        double z = j*dx-0.5;
-        double r = sqrt(y*y+z*z);
+  for(size_t i=0;i<dims[0];i++){
+    for(size_t j=0;j<dims[1];j++){
+      long double y = i-midpoint;
+      long double z = j-midpoint;
+      long double r = sqrt(y*y+z*z);
+      for(size_t k=0;k<dims[2];k++){
+        long double hourglass = size*0.5 + A*(cos(k*resolution*two_pi)-1);
+
         if(r<=hourglass)
           raw_image[pos++] = 0;
         else
@@ -454,6 +456,10 @@ void CTImage::mesh(){
     else if(((dims[2]-1)*resolution-meanz)<dz)
       facet_ids[i] = 6;
   }
+}
+
+void CTImage::set_basename(std::string _basename){
+  basename = _basename;
 }
 
 void CTImage::set_resolution(double resolution){
@@ -689,7 +695,7 @@ void CTImage::write_inr(const char *filename){
 // Write NHDR file.
 void CTImage::write_nhdr(const char *filename){
   if(verbose)
-    std::cout<<"void write_nrrd()"<<std::endl;
+    std::cout<<"void write_nhdr()"<<std::endl;
 
   std::ofstream file;
   if(filename==NULL)
@@ -732,6 +738,7 @@ void CTImage::write_vox(const char *filename){
     file.open(std::string(basename+".vox").c_str());
   else
     file.open(filename);
+
   file<<dims[0]<<" "<<dims[1]<<" "<<dims[2]<<std::endl;
   file<<resolution<<" "<<resolution<<" "<<resolution<<std::endl;
 
@@ -745,6 +752,12 @@ void CTImage::write_vox(const char *filename){
 void CTImage::write_vtu(const char *filename){
   if(verbose)
     std::cout<<"void write_vtu(const char *filename)"<<std::endl;
+
+  std::ofstream file;
+  if(filename==NULL)
+    file.open(std::string(basename+".vtu").c_str());
+  else
+    file.open(filename);
 
   // Initalise the vtk mesh
   vtkUnstructuredGrid *ug_tets = vtkUnstructuredGrid::New();

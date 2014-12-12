@@ -89,6 +89,7 @@ public:
 
   void mesh();
 
+  void set_basename(std::string basename);
   void set_resolution(double resolution);
 
   void trim_channels(int in_boundary, int out_boundary);
