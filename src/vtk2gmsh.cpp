@@ -41,12 +41,12 @@
 
 void usage(char *cmd){
   std::cerr<<
-    "Converts the Tarantula generated mesh into a GMSH file. In order to "
+    "Converts the VTK mesh output from Cleaver2 into a GMSH file. In order to "
     "avoid having disconnected domains we sweep across adjacent elements "
     "between two parallel sides of the domain and only keep mesh elements "
     "that are visited.\n"
     
-    "Usage: "<<cmd<<" [options ...] [Tarantula mesh file]\n"
+    "Usage: "<<cmd<<" [options ...] [VTK mesh file]\n"
 	     <<"\nOptions:\n"
            <<" -h, --help\n\tHelp! Prints this message.\n"
            <<" -n, --nhdr\n\nSpecify the NHDR file so that the meta-data can be read.\n"
@@ -151,7 +151,7 @@ int parse_arguments(int argc, char **argv,
 
 int main(int argc, char **argv){
   std::string filename, nhdr_filename;
-  bool verbose, toggle_material;
+  bool verbose;
   int axis = 0;
   parse_arguments(argc, argv, filename, verbose, toggle_material, nhdr_filename, axis);
 
@@ -162,7 +162,7 @@ int main(int argc, char **argv){
 
   std::vector<double> xyz;
   std::vector<int> tets;
-  read_tarantula_mesh_file(filename, nhdr_filename, toggle_material, xyz, tets);
+  read_vtk_mesh_file(filename, nhdr_filename, xyz, tets);
   
   if(verbose)
     std::cout<<"INFO: Finished reading "<<filename<<std::endl;
