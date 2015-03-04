@@ -35,41 +35,37 @@
  *  SUCH DAMAGE.
  */
 
-#include <getopt.h>
-
 #include "writers.h"
 #include "mesh_conversion.h"
 
+#include <getopt.h>
 
 void usage(char *cmd){
   std::cerr<<
-    "Converts the Tarantula generated mesh into a GMSH file. In order to "
+    "Converts the VTK mesh output from Cleaver2 into a GMSH file. In order to "
     "avoid having disconnected domains we sweep across adjacent elements "
     "between two parallel sides of the domain and only keep mesh elements "
     "that are visited.\n"
     
-    "Usage: "<<cmd<<" [options ...] [Tarantula mesh file]\n"
+    "Usage: "<<cmd<<" [options ...] [VTK mesh file]\n"
 	     <<"\nOptions:\n"
            <<" -h, --help\n\tHelp! Prints this message.\n"
            <<" -n, --nhdr\n\nSpecify the NHDR file so that the meta-data can be read.\n"
            <<" -v, --verbose\n\tVerbose output.\n"
 	   <<" -x, --x\n\tApply sweep align the x-axis (i.e. between the Y-Z parallel planes). This is the default.\n"
 	   <<" -y, --y\n\tApply sweep align the y-axis (i.e. between the X-Z parallel planes).\n"
-	   <<" -z, --z\n\tApply sweep align the z-axis (i.e. between the X-Y parallel planes).\n"
-           <<" -t, --toggle\n\tToggle the material selection for the mesh.\n";
+	   <<" -z, --z\n\tApply sweep align the z-axis (i.e. between the X-Y parallel planes).\n";
   return;
 }
 
 int parse_arguments(int argc, char **argv,
                     std::string &filename,
 		    bool &verbose,
-		    bool &toggle_material,
 		    std::string &nhdr_filename,
 		    int &axis){
 
   // Set defaults
   verbose = false;
-  toggle_material = false;
   axis = 0;
   
   if(argc==1){
@@ -81,7 +77,6 @@ int parse_arguments(int argc, char **argv,
     {"help", 0, 0, 'h'},
     {"nhdr", optional_argument, 0, 'n'},
     {"verbose", 0, 0, 'v'},
-    {"toggle",  0, 0, 't'},
     {"x",  0, 0, 'x'},
     {"y",  0, 0, 'y'},
     {"z",  0, 0, 'z'},
@@ -92,7 +87,7 @@ int parse_arguments(int argc, char **argv,
   int verbosity = 0;
   int c;
 
-  const char *shortopts = "hn:vtxyz";
+  const char *shortopts = "hn:vxyz";
 
   // Set opterr to nonzero to make getopt print error messages
   opterr=1;
@@ -110,9 +105,6 @@ int parse_arguments(int argc, char **argv,
       break;
     case 'v':
       verbose = true;
-      break;
-    case 't':
-      toggle_material = true;
       break;
     case 'x':
       axis = 0;
@@ -153,9 +145,9 @@ int parse_arguments(int argc, char **argv,
 
 int main(int argc, char **argv){
   std::string filename, nhdr_filename;
-  bool verbose, toggle_material;
+  bool verbose;
   int axis = 0;
-  parse_arguments(argc, argv, filename, verbose, toggle_material, nhdr_filename, axis);
+  parse_arguments(argc, argv, filename, verbose, nhdr_filename, axis);
 
   std::string basename = filename.substr(0, filename.size()-4);
   
@@ -164,7 +156,7 @@ int main(int argc, char **argv){
 
   std::vector<double> xyz;
   std::vector<int> tets;
-  read_tarantula_mesh_file(filename, nhdr_filename, toggle_material, xyz, tets);
+  read_vtk_mesh_file(filename, nhdr_filename, xyz, tets);
   
   if(verbose)
     std::cout<<"INFO: Finished reading "<<filename<<std::endl;
