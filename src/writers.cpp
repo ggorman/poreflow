@@ -79,7 +79,11 @@ int write_vtk_file(std::string filename,
   
   vtkSmartPointer<vtkXMLUnstructuredGridWriter> tet_writer = vtkSmartPointer<vtkXMLUnstructuredGridWriter>::New();
   tet_writer->SetFileName(std::string(filename+".vtu").c_str());
+#if VTK_MAJOR_VERSION < 6
+  tet_writer->SetInput(ug_tets);
+#else
   tet_writer->SetInputData(ug_tets);
+#endif
   tet_writer->Write();
   
   if(facets.empty())
@@ -108,7 +112,11 @@ int write_vtk_file(std::string filename,
   
   vtkSmartPointer<vtkXMLUnstructuredGridWriter> tri_writer = vtkSmartPointer<vtkXMLUnstructuredGridWriter>::New();
   tri_writer->SetFileName(std::string(filename+"_facets.vtu").c_str());
+#if VTK_MAJOR_VERSION < 6
+  tri_writer->SetInput(ug_facets);
+#else
   tri_writer->SetInputData(ug_facets);
+#endif
   tri_writer->Write();
 
   return 0;
