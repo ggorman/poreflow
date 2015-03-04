@@ -785,7 +785,11 @@ void CTImage::write_vtu(const char *filename){
     tet_writer->SetFileName(std::string(basename+".vtu").c_str());
   else
     tet_writer->SetFileName(filename);
+#if VTK_MAJOR_VERSION < 6
+  tet_writer->SetInput(ug_tets);
+#else
   tet_writer->SetInputData(ug_tets);
+#endif
   tet_writer->Write();
 
   // Initalise the vtk mesh
@@ -815,7 +819,11 @@ void CTImage::write_vtu(const char *filename){
     tri_writer->SetFileName(std::string(basename+"_facets.vtu").c_str());
   else
     tri_writer->SetFileName((std::string(filename, strlen(filename)-4)+"_facets.vtu").c_str());
+#if VTK_MAJOR_VERSION < 6
+  tri_writer->SetInput(ug_tris);
+#else
   tri_writer->SetInputData(ug_tris);
+#endif
   tri_writer->Write();
 
 }
