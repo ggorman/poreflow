@@ -35,6 +35,8 @@
  *  SUCH DAMAGE.
  */
 
+#include <getopt.h>
+
 #include "writers.h"
 #include "mesh_conversion.h"
 

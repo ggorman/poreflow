@@ -38,6 +38,8 @@
 #include <algorithm>
 #include <iostream>
 #include <set>
+#include <unordered_map>
+#include <unordered_set>
 #include <map>
 #include <string>
 #include <vector>
@@ -46,13 +48,15 @@
 #include <cassert>
 #include <cstdlib>
 
-#include <vtkUnstructuredGridReader.h>
-#include <vtkUnstructuredGrid.h>
+#include <vtkPolyDataReader.h>
+#include <vtkPolyData.h>
 #include <vtkSmartPointer.h>
 #include <vtkCellType.h>
 #include <vtkPoints.h>
+#include <vtkCell.h>
 
 #include "writers.h"
+#include "mesh_conversion.h"
 
 int create_domain(int axis,
 		  std::vector<double> &xyz,
@@ -63,55 +67,70 @@ int create_domain(int axis,
   // Create node-element adjancy list.
   size_t NNodes = xyz.size()/3;
 
-  std::vector< std::set<int> > NEList(NNodes);
+  std::vector< std::unordered_set<int> > NEList(NNodes);
   int NTetra = tets.size()/4;
+
   for(int i=0;i<NTetra;i++){
     if(tets[i*4]==-1)
       continue;
     
-    double v = volume(&xyz[3*tets[i*4]], &xyz[3*tets[i*4+1]], &xyz[3*tets[i*4+2]], &xyz[3*tets[i*4+3]]);
-    if(v<0){
-      std::cerr<<"WARNING: Inverted element encountered. Deleting and continuing.\n";
-      for(int j=0;j<4;j++)
-	std::cerr<<i<<", "<<tets[i*4+j]<<": "<<xyz[3*tets[i*4+j]]<<" "<<xyz[3*tets[i*4+j]+1]<<" "<<xyz[3*tets[i*4+j]+2]<<std::endl;
-
-      tets[i*4] = -1;
-    }else{
-      for(int j=0;j<4;j++){
-	NEList[tets[i*4+j]].insert(i);
-      }
-    }
+    double v = volume(xyz.data()+3*tets[i*4],
+     		      xyz.data()+3*tets[i*4+1], 
+		      xyz.data()+3*tets[i*4+2],
+		      xyz.data()+3*tets[i*4+3]);
+    if(v<0)
+      std::swap(tets[i*4+2], tets[i*4+3]);
+    
+    
+    for(int j=0;j<4;j++)
+      NEList[tets[i*4+j]].insert(i);
   }
 
-  // Create element-element adjancy list
-  std::vector<int> EEList(NTetra*4, -1);
-  for(int i=0;i<NTetra;i++){
-    if(tets[i*4]==-1)
-      continue;
-  
-    for(int j=0;j<4;j++){  
-      std::set<int> edge_neighbours;
-      set_intersection(NEList[tets[i*4+(j+1)%4]].begin(), NEList[tets[i*4+(j+1)%4]].end(),
-                       NEList[tets[i*4+(j+2)%4]].begin(), NEList[tets[i*4+(j+2)%4]].end(),
-                       inserter(edge_neighbours, edge_neighbours.begin()));
-      
-      std::set<int> neighbours;
-      set_intersection(NEList[tets[i*4+(j+3)%4]].begin(), NEList[tets[i*4+(j+3)%4]].end(),
-                       edge_neighbours.begin(), edge_neighbours.end(),
-                       inserter(neighbours, neighbours.begin()));
+  std::vector<int> EEList(NTetra*4);
+#pragma omp parallel
+  {
+    // Initialise and ensure 1st touch placement.
+#pragma omp for
+    for(int i=0;i<4*NTetra;i++)
+      EEList[i] = -1;
 
-      if(neighbours.size()==2){
-        if(*neighbours.begin()==i)
-          EEList[i*4+j] = *neighbours.rbegin();
-        else
-          EEList[i*4+j] = *neighbours.begin();
+#pragma omp for
+    for(int i=0;i<NTetra;i++){
+      if(tets[i*4]==-1)
+        continue;
+
+      int n0 = tets[i*4];
+      int n1 = tets[i*4+1];
+      int n2 = tets[i*4+2];
+      int n3 = tets[i*4+3];
+
+      for(auto& e : NEList[n0]){
+        if(e!=i){
+          if(NEList[n1].find(e)!=NEList[n1].end()){
+            if(EEList[i*4+3]==-1 && NEList[n2].find(e)!=NEList[n2].end()){
+              EEList[i*4+3] = e;
+            }else if(EEList[i*4+2]==-1 && NEList[n3].find(e)!=NEList[n3].end()){
+              EEList[i*4+2] = e;
+            }
+          }
+        }
+        if(EEList[i*4+3]!=-1 && EEList[i*4+2]!=-1)
+          break;
       }
-#ifndef NDEBUG
-      else{
-	assert(neighbours.size()==1);
-	assert(*neighbours.begin()==i);
+
+      for(auto& e : NEList[n2]){
+        if(e!=i){
+          if(NEList[n3].find(e)!=NEList[n3].end()){
+            if(EEList[i*4+1]==-1 && NEList[n0].find(e)!=NEList[n0].end()){
+              EEList[i*4+1] = e;
+            }else if(EEList[i*4]==-1 && NEList[n1].find(e)!=NEList[n1].end()){
+              EEList[i*4] = e;
+            }
+          }
+        }
+        if(EEList[i*4+1]!=-1 && EEList[i*4]!=-1)
+          break;
       }
-#endif
     }
   }
   NEList.clear();
@@ -257,12 +276,12 @@ int create_domain(int axis,
   std::vector<double> xyz_new;
   std::vector<int> tets_new;
   int cnt=0;
-  for(std::map<int, int>::iterator it=renumbering.begin();it!=renumbering.end();++it){
-    it->second = cnt++;
+  for(auto& it : renumbering){
+    it.second = cnt++;
     
-    xyz_new.push_back(xyz[(it->first)*3]);
-    xyz_new.push_back(xyz[(it->first)*3+1]);
-    xyz_new.push_back(xyz[(it->first)*3+2]);
+    xyz_new.push_back(xyz[(it.first)*3]);
+    xyz_new.push_back(xyz[(it.first)*3+1]);
+    xyz_new.push_back(xyz[(it.first)*3+2]);
   }
   for(int i=0;i<NTetra;i++){
     if(label[i]==2){
@@ -349,9 +368,9 @@ double read_resolution_from_nhdr(std::string filename){
   double resolution = 1.0;
 
   // Open file.
-  std::ifstream nhdr(nhdr_filename);
+  std::ifstream nhdr(filename);
   if(!nhdr.is_open()){
-    std::cerr<<"ERROR: Cannot open NHDR file: "<<nhdr_filename<<std::endl;
+    std::cerr<<"ERROR: Cannot open NHDR file: "<<filename<<std::endl;
     return resolution;
   }
 
@@ -506,28 +525,21 @@ void read_vtk_mesh_file(std::string filename, std::string nhdr_filename,
   // Get meta-data from NHDR file if specified.
   if(!nhdr_filename.empty()){
     resolution = read_resolution_from_nhdr(nhdr_filename);
-  }
+  } 
 
   // Read VTK file
-  vtkSmartPointer<vtkUnstructuredGridReader> reader = vtkSmartPointer<vtkUnstructuredGridReader>::New();
+  vtkSmartPointer<vtkPolyDataReader> reader = vtkSmartPointer<vtkPolyDataReader>::New();
   reader->SetFileName(filename.c_str());
   reader->Update();
-  
-  vtkSmartPointer<vtkUnstructuredGrid> ug = vtkSmartPointer<vtkUnstructuredGrid>::New();
-  ug->SetInputPort(reader->GetOutputConnection());
 
-  // Read header
-  std::string throwaway;
-  std::getline(infile, throwaway); // line 1
-  std::getline(infile, throwaway); // line 2
-  int NNodes;
-  infile>>NNodes;
-  
+  vtkSmartPointer<vtkPolyData> pd = vtkSmartPointer<vtkPolyData>::New();
+  pd->DeepCopy(reader->GetOutput());
+
   // Read vertices
-  int NNodes = ug->GetNumberOfPoints();
+  int NNodes = pd->GetNumberOfPoints();
   xyz.resize(NNodes*3);
   for(int i=0;i<NNodes;i++){
-    ug->GetPoints()->GetPoint(i, xyz.data()+i*3);
+    pd->GetPoints()->GetPoint(i, xyz.data()+i*3);
   }
 
   // Rescale if necessary.
@@ -537,45 +549,42 @@ void read_vtk_mesh_file(std::string filename, std::string nhdr_filename,
     }
   }
 
-  // Read elements
-  int cell_type = ug->GetCell(0)->GetCellType();
-
-  int nloc = 4;
-  int ndims = 3;
-  if(cell_type==VTK_TETRA){
-    std::cerr<<"ERROR("<<__FILE__<<"): unsupported element type\n";
-    exit(-1);
-  }
-
-  int NTetra = ug->GetNumberOfCells();
-  tets.reserve(NTetra*4);
-
-  for(int i=0;i<NTetra;i++){
-    vtkCell *cell = ug->GetCell(i);
-    assert(cell->GetCellType()==cell_type);
-    for(int j=0;j<nloc;j++){
-      tets.push_back(cell->GetPointId(j));
+  // Read facets - cleaver writes out tetrahedra by writing 4 facets..
+  int nfacets = pd->GetNumberOfCells();
+  for(int i=0;i<nfacets;i+=4){
+    for(int j=0;j<4;j++){
+      int cell_type = pd->GetCell(i+j)->GetCellType();
+      if(cell_type!=VTK_TRIANGLE){
+        std::cerr<<"ERROR("<<__FILE__<<"): unsupported element type.\n";
+        exit(-1);
+      }
     }
+
+    vtkCell *cell0 = pd->GetCell(i);
+    for(int j=0;j<3;j++){
+      tets.push_back(cell0->GetPointId(j));
+    }
+     
+    vtkCell *cell1 = pd->GetCell(i+1);
+    tets.push_back(cell1->GetPointId(2));
   }
-
 }
-
 
 double volume(const double *x0, const double *x1, const double *x2, const double *x3){
 
-    double x01 = (x0[0] - x1[0]);
-    double x02 = (x0[0] - x2[0]);
-    double x03 = (x0[0] - x3[0]);
+  double x01 = (x0[0] - x1[0]);
+  double x02 = (x0[0] - x2[0]);
+  double x03 = (x0[0] - x3[0]);
 
-    double y01 = (x0[1] - x1[1]);
-    double y02 = (x0[1] - x2[1]);
-    double y03 = (x0[1] - x3[1]);
+  double y01 = (x0[1] - x1[1]);
+  double y02 = (x0[1] - x2[1]);
+  double y03 = (x0[1] - x3[1]);
 
-    double z01 = (x0[2] - x1[2]);
-    double z02 = (x0[2] - x2[2]);
-    double z03 = (x0[2] - x3[2]);
+  double z01 = (x0[2] - x1[2]);
+  double z02 = (x0[2] - x2[2]);
+  double z03 = (x0[2] - x3[2]);
 
-    return (-x03*(z02*y01 - z01*y02) + x02*(z03*y01 - z01*y03) - x01*(z03*y02 - z02*y03))/6;
+  return (-x03*(z02*y01 - z01*y02) + x02*(z03*y01 - z01*y03) - x01*(z03*y02 - z02*y03))/6;
 }
 
 

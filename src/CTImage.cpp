@@ -49,6 +49,7 @@
 #include <vtkImageToPolyDataFilter.h>
 #include <vtkPolyData.h>
 #include <vtkDelaunay2D.h>
+#include <vtkSmartPointer.h>
 
 #include <algorithm>
 #include <vector>
@@ -760,11 +761,11 @@ void CTImage::write_vtu(const char *filename){
     file.open(filename);
 
   // Initalise the vtk mesh
-  vtkUnstructuredGrid *ug_tets = vtkUnstructuredGrid::New();
+  vtkSmartPointer<vtkUnstructuredGrid> ug_tets = vtkSmartPointer<vtkUnstructuredGrid>::New();
 
   // Write out points
   size_t NNodes = get_NNodes();
-  vtkPoints *pts = vtkPoints::New();
+  vtkSmartPointer<vtkPoints> pts = vtkSmartPointer<vtkPoints>::New();
   pts->SetNumberOfPoints(NNodes);
   for(int i=0;i<NNodes;i++){
     pts->SetPoint(i, &(xyz[i*3]));
@@ -773,58 +774,50 @@ void CTImage::write_vtu(const char *filename){
 
   size_t NElements = get_NElements();
   for(int i=0;i<NElements;i++){
-    vtkIdList *idlist = vtkIdList::New();
+    vtkSmartPointer<vtkIdList> idlist = vtkSmartPointer<vtkIdList>::New();
     for(int j=0;j<4;j++)
       idlist->InsertNextId(tets[i*4+j]);
     ug_tets->InsertNextCell(10, idlist);
-    idlist->Delete();
   }
 
-  vtkXMLUnstructuredGridWriter *tet_writer = vtkXMLUnstructuredGridWriter::New();
+  vtkSmartPointer<vtkXMLUnstructuredGridWriter> tet_writer = vtkSmartPointer<vtkXMLUnstructuredGridWriter>::New();
   if(filename==NULL)
     tet_writer->SetFileName(std::string(basename+".vtu").c_str());
   else
     tet_writer->SetFileName(filename);
-  tet_writer->SetInput(ug_tets);
+  tet_writer->SetInputData(ug_tets);
   tet_writer->Write();
 
-  ug_tets->Delete();
-  tet_writer->Delete();
-
   // Initalise the vtk mesh
-  vtkUnstructuredGrid *ug_tris = vtkUnstructuredGrid::New();
+  vtkSmartPointer<vtkUnstructuredGrid> ug_tris = vtkSmartPointer<vtkUnstructuredGrid>::New();
   ug_tris->SetPoints(pts);
 
   // Write facet
   size_t NFacets = get_NFacets();
   for(int i=0;i<NFacets;i++){
-    vtkIdList *idlist = vtkIdList::New();
+    vtkSmartPointer<vtkIdList> idlist = vtkSmartPointer<vtkIdList>::New();
     for(int j=0;j<3;j++)
       idlist->InsertNextId(facets[i*3+j]);
     ug_tris->InsertNextCell(5, idlist);
-    idlist->Delete();
   }
 
   // Write facet_ids
-  vtkIntArray *vtk_facet_ids = vtkIntArray::New();
+  vtkSmartPointer<vtkIntArray> vtk_facet_ids = vtkSmartPointer<vtkIntArray>::New();
   vtk_facet_ids->SetName("Boundary label");
   vtk_facet_ids->SetNumberOfComponents(1);
   vtk_facet_ids->SetNumberOfTuples(NFacets);
   for(int i=0;i<NFacets;i++)
     vtk_facet_ids->SetValue(i, facet_ids[i]);
   ug_tris->GetCellData()->AddArray(vtk_facet_ids);
-  vtk_facet_ids->Delete();
 
-  vtkXMLUnstructuredGridWriter *tri_writer = vtkXMLUnstructuredGridWriter::New();
+  vtkSmartPointer<vtkXMLUnstructuredGridWriter> tri_writer = vtkSmartPointer<vtkXMLUnstructuredGridWriter>::New();
   if(filename==NULL)
     tri_writer->SetFileName(std::string(basename+"_facets.vtu").c_str());
   else
     tri_writer->SetFileName((std::string(filename, strlen(filename)-4)+"_facets.vtu").c_str());
-  tri_writer->SetInput(ug_tris);
+  tri_writer->SetInputData(ug_tris);
   tri_writer->Write();
 
-  ug_tris->Delete();
-  tri_writer->Delete();  
 }
 
 int CTImage::write_gmsh(const char *filename){
